@@ -5,6 +5,9 @@
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/Synestra.Api/Synestra.Api.csproj" />
+    <Project Path="src/Synestra.Domain/Synestra.Domain.csproj" Id="42ebdb47-7f8d-47a5-aeb3-5c39483ecd89" />
+    <Project Path="src/Synestra.MigrationWorker/Synestra.MigrationWorker.csproj" />
+    <Project Path="src/Synestra.Persistence/Synestra.Persistence.csproj" Id="1c38c2d2-7b55-4192-bdd4-b416b201d690" />
   </Folder>
   <Folder Name="/tests/" />
 </Solution>

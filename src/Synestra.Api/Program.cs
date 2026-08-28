@@ -1,5 +1,12 @@
+using Synestra.Persistence.Extensions;
+
 var builder = WebApplication.CreateBuilder(args);
 
+var connectionString =
+    builder.Configuration.GetConnectionString("synestra")
+    ?? throw new InvalidOperationException("Connection string 'synestra' was not found.");
+
+builder.Services.AddPersistence(connectionString);
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 

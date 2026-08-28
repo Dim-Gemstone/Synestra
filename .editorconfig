@@ -1,0 +1,11 @@
+root = true
+
+# Cross-platform coding-format rules. Git line-ending normalization is mirrored
+# in .gitattributes so IDE edits and checkouts use the same convention.
+[*]
+end_of_line = lf
+insert_final_newline = true
+charset = utf-8
+
+[*.{bat,cmd}]
+end_of_line = crlf
