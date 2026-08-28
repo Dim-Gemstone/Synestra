@@ -22,4 +22,9 @@
     <Folder Include="Controllers\" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\Synestra.Domain\Synestra.Domain.csproj" />
+    <ProjectReference Include="..\Synestra.Persistence\Synestra.Persistence.csproj" />
+  </ItemGroup>
+
 </Project>
