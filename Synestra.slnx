@@ -1,5 +1,18 @@
 <Solution>
-  <Folder Name="/docs/" />
+  <Folder Name="/docs/">
+    <File Path="docs/domain-glossary.md" />
+    <File Path="docs/job-lifecycle.md" />
+    <File Path="docs/project-brief.md" />
+    <File Path="docs/project-status.md" />
+    <File Path="docs/roadmap.md" />
+  </Folder>
+  <Folder Name="/docs/decisions/">
+    <File Path="docs/decisions/0001-project-and-dependency-boundaries.md" />
+    <File Path="docs/decisions/0002-postgresql-as-primary-persistence.md" />
+    <File Path="docs/decisions/0003-dedicated-database-migration-worker.md" />
+    <File Path="docs/decisions/0004-browser-automation-as-initial-workload.md" />
+    <File Path="docs/decisions/README.md" />
+  </Folder>
   <Folder Name="/orchestration/">
     <Project Path="orchestration/Synestra.AppHost/Synestra.AppHost.csproj" Id="940d2f84-a3f3-434a-a420-1b97a47e3e2b" />
     <Project Path="orchestration/Synestra.ServiceDefaults/Synestra.ServiceDefaults.csproj" />
