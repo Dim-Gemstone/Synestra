@@ -19,6 +19,7 @@ This document is not a replacement for ADRs. Important accepted decisions should
 | Decision / Fact | Status | Notes |
 |---|---|---|
 | Synestra is a distributed work execution system | Accepted | It is not merely an HTTP API or CRUD layer over jobs. The core model is based on workers, attempts, leases, capacity, retries, and recovery. |
+| The initial product form is an independent execution control-plane service | Accepted direction | Reusable libraries or a framework may emerge from concrete reuse needs later, but are not the current design target. |
 | The control plane is independent of a specific workload | Accepted | Core scheduling and execution semantics must not depend on CEF or browser automation. |
 | Browser / CEF automation is the first concrete workload | Accepted | It provides a real execution scenario for validating the general Synestra architecture. |
 | `JobDefinition → Job → JobAttempt → Lease → Worker` are the core domain concepts | Accepted / Implemented | These concepts already form the current domain model. |
@@ -73,7 +74,6 @@ Implementation must not silently choose semantics for them unless the relevant t
 
 | Area | Open Question |
 |---|---|
-| Product | Is Synestra primarily a reusable framework/library, an independent execution control-plane service, or the foundation of a larger product? |
 | API consumers | Who are the intended consumers of the Synestra API? |
 | Job definitions | Who creates and manages `JobDefinition` records? |
 | Job submission | Who is allowed to submit jobs? |

@@ -1,6 +1,11 @@
 # Synestra
 
-Synestra is a distributed background job execution framework.
+Synestra is a workload-agnostic distributed execution control plane for
+coordinating background work across independently running workers.
+
+The initial product form is a control-plane service. Reusable libraries or a
+framework may emerge later, but the core must not be designed around that
+possibility before concrete reuse requirements exist.
 
 The core domain concepts are:
 
@@ -14,13 +19,21 @@ See:
 - docs/project-brief.md
 - docs/domain-glossary.md
 - docs/job-lifecycle.md
+- docs/project-status.md
+- docs/decisions/README.md
 
 ## Architecture
 
 Projects should follow these dependency directions:
 
+```text
 API -> Application -> Domain
-                   -> Persistence
+API -> Persistence -> Domain
+```
+
+The exact Application-to-Persistence boundary is intentionally undecided and
+must emerge from concrete use cases. Application must not depend on the
+concrete EF Core Persistence project.
 
 Domain must not depend on Application, API, EF Core or infrastructure concerns.
 
