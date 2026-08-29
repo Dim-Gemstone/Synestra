@@ -19,5 +19,6 @@ Deferred ideas that have not yet required an architectural decision should norma
 | 0002 | PostgreSQL as primary persistence | Accepted |
 | 0003 | Dedicated database migration worker | Accepted |
 | 0004 | Browser automation as the initial workload | Accepted |
+| 0005 | Worker communication through the control-plane API | Accepted |
 
 See `../project-status.md` for unresolved questions, proposals, rejected directions, and deferred work.

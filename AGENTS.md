@@ -13,7 +13,7 @@ The core domain concepts are:
 - Job — one logical unit of work.
 - JobAttempt — one execution attempt for a Job.
 - Lease — temporary exclusive right for a Worker to execute an attempt.
-- Worker — execution process with identity, heartbeat and finite capacity.
+- Worker — registered worker agent with identity, heartbeat and finite capacity.
 
 See:
 - docs/project-brief.md
@@ -42,6 +42,11 @@ Persistence implements storage concerns and EF Core mappings.
 Application owns use-case orchestration and transaction boundaries.
 
 API should remain thin and must not contain domain workflow logic.
+
+Client-facing and worker-facing operations are separate logical API surfaces,
+even when hosted by the same application. Workers communicate through the
+Worker API and must not access the control-plane database directly. Follow
+ADR-0005 for this boundary.
 
 Do not introduce repositories, mediator abstractions, CQRS infrastructure,
 domain events or other architectural patterns unless they solve a concrete

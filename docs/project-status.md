@@ -34,6 +34,8 @@ This document is not a replacement for ADRs. Important accepted decisions should
 | Application depends on Domain | Accepted | Application use cases orchestrate domain behavior. |
 | Persistence depends on Domain | Accepted | Persistence maps and stores domain entities. |
 | API acts as the composition root | Accepted direction | API may compose Application and Persistence while keeping business workflow logic outside controllers/endpoints. |
+| Workers communicate through the control-plane API | Accepted | Workers do not access the Synestra PostgreSQL database directly. Database coordination remains internal to the control plane. |
+| Client API and Worker API are separate logical surfaces | Accepted direction | They may initially share one ASP.NET Core host but require distinct routes, contracts, and authorization boundaries. |
 | .NET Aspire is used for local distributed application orchestration | Accepted / Implemented | Aspire currently starts and coordinates required development infrastructure. |
 | PostgreSQL is started through Aspire | Accepted / Implemented | This is sufficient for the current development phase. |
 | Database migrations are applied by a dedicated one-shot migration worker | Accepted / Implemented | Migration execution is separated from the API process. |
@@ -59,6 +61,8 @@ The following ideas are considered plausible directions but are not yet binding 
 | Worker heartbeat with offline detection | The system requires liveness tracking, but heartbeat intervals, timeout thresholds, and recovery rules are not defined. |
 | Lease renewal | The lease model strongly suggests renewal, but the protocol and failure semantics remain undefined. |
 | Retry with backoff | Retries are expected, but retry policy, timing, classification, and ownership are not yet defined. |
+| A worker agent supervises separate execution processes | This fits dynamic workloads and CEF process trees, but agent lifetime and process-isolation rules are not yet defined. |
+| Worker-driven work acquisition through the Worker API | This is the simplest initial direction, but polling, long-polling, streaming, push, or broker-based delivery has not been selected. |
 | Worker/browser pools and groups | These originate from the earlier browser-management concept and may be useful later, but they are not required by the current core. |
 | Remote browser access | A potential future capability rather than a current core requirement. |
 | Headless CEF workers | A plausible worker mode, but rendering and interactive access requirements remain unresolved. |
@@ -79,6 +83,10 @@ Implementation must not silently choose semantics for them unless the relevant t
 | Job submission | Who is allowed to submit jobs? |
 | Worker trust | Are workers trusted internal processes, authenticated external clients, or both? |
 | Worker identity | How does a worker obtain, persist, and prove its identity? |
+| Worker process lifetime | Are worker agents long-lived supervisors, ephemeral single-job processes, or are both modes supported? |
+| Execution isolation | Does each attempt receive a separate process, and who owns timeout, termination, cleanup, and result collection? |
+| API deployment | Do Client API and Worker API remain one deployment or eventually become independently deployed services? |
+| Work delivery | Does a worker poll, long-poll, stream, receive push notifications, or consume broker notifications before claiming work? |
 | Job claiming | What is the exact atomic job-claiming algorithm? |
 | Delivery guarantee | Is execution explicitly at-least-once, or does Synestra provide another guarantee? |
 | Duplicate execution | Under which failure scenarios can the same logical job execute more than once? |
