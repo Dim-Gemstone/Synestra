@@ -9,6 +9,7 @@ public sealed class Job
     }
 
     public Job(
+        Guid jobDefinitionId,
         string type,
         string payload,
         int priority,
@@ -16,12 +17,18 @@ public sealed class Job
         DateTime createdAtUtc,
         DateTime availableAtUtc)
     {
+        if (jobDefinitionId == Guid.Empty)
+        {
+            throw new ArgumentException("Job definition ID cannot be empty.", nameof(jobDefinitionId));
+        }
+
         if (maxAttempts <= 0)
         {
             throw new ArgumentOutOfRangeException(nameof(maxAttempts), "Maximum attempts must be greater than zero.");
         }
 
         Id = Guid.CreateVersion7();
+        JobDefinitionId = jobDefinitionId;
         Type = DomainValidation.RequiredText(type, 100, nameof(type));
         Payload = DomainValidation.RequiredText(payload, int.MaxValue, nameof(payload));
         Priority = priority;
@@ -32,6 +39,7 @@ public sealed class Job
     }
 
     public Guid Id { get; private set; }
+    public Guid JobDefinitionId { get; private set; }
     public string Type { get; private set; } = null!;
     public JobStatus Status { get; private set; }
     public int Priority { get; private set; }

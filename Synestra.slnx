@@ -12,6 +12,7 @@
     <File Path="docs/decisions/0003-dedicated-database-migration-worker.md" />
     <File Path="docs/decisions/0004-browser-automation-as-initial-workload.md" />
     <File Path="docs/decisions/0005-worker-communication-through-control-plane-api.md" />
+    <File Path="docs/decisions/0006-job-definition-identity.md" />
     <File Path="docs/decisions/README.md" />
   </Folder>
   <Folder Name="/orchestration/">
@@ -30,5 +31,8 @@
     <Project Path="src/Synestra.MigrationWorker/Synestra.MigrationWorker.csproj" />
     <Project Path="src/Synestra.Persistence/Synestra.Persistence.csproj" Id="1c38c2d2-7b55-4192-bdd4-b416b201d690" />
   </Folder>
-  <Folder Name="/tests/" />
+  <Folder Name="/tests/">
+    <Project Path="tests/Synestra.Domain.Tests/Synestra.Domain.Tests.csproj" />
+    <Project Path="tests/Synestra.Persistence.IntegrationTests/Synestra.Persistence.IntegrationTests.csproj" />
+  </Folder>
 </Solution>

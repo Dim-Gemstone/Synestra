@@ -18,5 +18,6 @@ internal sealed class JobDefinitionConfiguration : IEntityTypeConfiguration<JobD
         builder.Property(x => x.CreatedAtUtc).HasColumnName("created_at_utc").IsRequired();
         builder.Property(x => x.UpdatedAtUtc).HasColumnName("updated_at_utc").IsRequired();
         builder.HasIndex(x => x.Type).IsUnique();
+        builder.HasAlternateKey(x => new { x.Id, x.Type });
     }
 }
