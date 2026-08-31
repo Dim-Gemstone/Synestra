@@ -21,5 +21,6 @@ Deferred ideas that have not yet required an architectural decision should norma
 | 0004 | Browser automation as the initial workload | Accepted |
 | 0005 | Worker communication through the control-plane API | Accepted |
 | 0006 | Job definition identity | Accepted |
+| 0007 | Submit job semantics | Accepted |
 
 See `../project-status.md` for unresolved questions, proposals, rejected directions, and deferred work.
