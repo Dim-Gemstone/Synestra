@@ -18,14 +18,13 @@ Not included:
 
 - worker dispatch;
 - retries;
-- cancellation.
+- cancellation;
+- submission idempotency.
 
 Decisions required before implementation:
 
 - behavior for submitting work against a disabled definition;
-- identity relationship between `Job` and `JobDefinition`;
 - which scheduling and retry inputs the client may provide;
 - ownership of job ID and creation timestamp generation;
 - minimum JSON payload validation and size rules;
 - submission response contract;
-- whether submission idempotency belongs in this slice.

@@ -44,6 +44,7 @@ This document is not a replacement for ADRs. Important accepted decisions should
 | EF Core mappings live outside domain entities | Accepted / Implemented | Infrastructure-specific configuration must not shape the public domain model. |
 | Domain entities expose private setters and enforce invariants | Accepted / Implemented | The model is intentionally not designed as a collection of mutable EF data records. |
 | Jobs carry arbitrary JSON payloads | Accepted / Implemented | Payload contract, versioning, validation, and size limits remain open. |
+| Jobs reference their creating definition by ID and snapshot its type | Accepted / Implemented | Clients use the unique immutable textual type; PostgreSQL enforces the internal relationship. See ADR-0006. |
 | Synestra follows a pragmatic domain-oriented architecture | Accepted direction | Domain modeling is used where useful without adopting full ceremonial DDD by default. |
 
 ---
@@ -101,7 +102,6 @@ Implementation must not silently choose semantics for them unless the relevant t
 | Disabled definitions | Does `JobDefinition.IsEnabled = false` block new submissions only, execution of existing jobs, or both? |
 | Scheduling | Is `AvailableAtUtc` sufficient for the initial system, and will recurring/cron jobs ever belong to the core? |
 | Payload contract | How are JSON payload schema, versioning, validation, maximum size, and security handled? |
-| Job type relationship | Should `Job.Type` have a database-enforced relationship with `JobDefinition.Type`? |
 | Transaction boundaries | Which Application operations define database transaction boundaries? |
 | Concurrency control | Which operations require pessimistic locking, optimistic concurrency, or both? |
 | Application persistence boundary | Should Application depend on custom persistence abstractions, or can some use cases work with more direct infrastructure-specific interfaces? |
@@ -139,6 +139,7 @@ Deferred items are not rejected. They are intentionally postponed until the curr
 | Development/production environment parity | Important long term, but not required before the core execution semantics exist. |
 | Docker Compose or alternative deployment generation | Useful for future deployment, but not necessary for the current development phase. |
 | Recurring / cron jobs | Delayed execution already exists conceptually through availability time; recurring scheduling can be introduced later if needed. |
+| Submission idempotency | Deferred until after the initial submit-job slice; duplicate-submission behavior under client retries must be addressed before idempotent delivery is claimed. |
 | Worker groups / browser pools | Useful only after basic worker registration, capacity, claiming, and lease semantics work. |
 | Remote interactive browser rendering | A future browser-worker feature rather than a control-plane prerequisite. |
 | Advanced worker resource models | Generic capacity should be understood first before introducing CPU/memory/browser-specific resource scheduling. |
