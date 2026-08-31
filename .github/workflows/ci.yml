@@ -55,4 +55,4 @@ jobs:
         run: trivy image --scanners license --license-full --exit-code 0 "$POSTGRES_IMAGE"
 
       - name: Audit PostgreSQL image vulnerabilities
-        run: trivy image --scanners vuln --severity HIGH,CRITICAL --exit-code 1 "$POSTGRES_IMAGE"
+        run: trivy image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 0 "$POSTGRES_IMAGE"

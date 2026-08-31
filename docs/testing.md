@@ -51,5 +51,13 @@ CI performs three checks:
   detected licenses.
 
 License findings are audit output for review. High and critical known
-vulnerabilities fail CI. Any future license allow/deny policy must be recorded
-explicitly before making license names a build gate.
+vulnerabilities in repository dependencies fail CI. Findings in the upstream
+PostgreSQL development/test image remain visible but do not fail CI because the
+image is not a Synestra production artifact and cannot be remediated in this
+repository. Unfixed image findings are omitted to keep that report actionable.
+
+If Synestra later distributes or deploys a PostgreSQL image as a production
+artifact, introduce an explicit container policy with digest pinning, reviewed
+VEX or narrowly scoped exceptions, and a remediation window before turning the
+image scan into a merge gate. Any future license allow/deny policy must likewise
+be recorded explicitly before making license names a build gate.
