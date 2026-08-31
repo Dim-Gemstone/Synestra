@@ -13,11 +13,11 @@ dotnet restore
 dotnet test --solution Synestra.slnx
 ```
 
-Verify that Solution Explorer contains every Markdown file under `docs/` and no
-stale documentation references:
+Verify that Solution Explorer mirrors every Markdown file under `docs/`, every
+file under `scripts/`, and contains no stale references:
 
 ```powershell
-./scripts/verify-solution-docs.ps1
+./scripts/verify-solution-items.ps1
 ```
 
 CI runs this check before restore and tests.

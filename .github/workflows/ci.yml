@@ -19,9 +19,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Verify solution documentation items
+      - name: Verify solution items
         shell: pwsh
-        run: ./scripts/verify-solution-docs.ps1
+        run: ./scripts/verify-solution-items.ps1
 
       - uses: actions/setup-dotnet@v4
         with:

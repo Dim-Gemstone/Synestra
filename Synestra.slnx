@@ -22,6 +22,9 @@
     <Project Path="orchestration/Synestra.AppHost/Synestra.AppHost.csproj" Id="940d2f84-a3f3-434a-a420-1b97a47e3e2b" />
     <Project Path="orchestration/Synestra.ServiceDefaults/Synestra.ServiceDefaults.csproj" />
   </Folder>
+  <Folder Name="/scripts/">
+    <File Path="scripts/verify-solution-items.ps1" />
+  </Folder>
   <Folder Name="/Solution Items/">
     <File Path=".editorconfig" />
     <File Path="AGENTS.md" />

@@ -102,19 +102,34 @@ docs: define submit job semantics
 feat(jobs): implement submit job
 ```
 
-## Documentation in the solution
+Do not add a pull request number manually to source commit titles or the pull
+request title. When squash-merging, retain the `(#N)` suffix that GitHub adds to
+the final commit title because it provides a direct link from repository history
+to the pull request. The generated suffix does not count against the 72-character
+limit for the authored PR title. Historical commits without the suffix do not
+need to be rewritten.
+
+Example final squash commit:
+
+```text
+feat(jobs): implement submit job (#12)
+```
+
+## Repository files in the solution
 
 Every Markdown file under `docs/` must also appear in the matching documentation
 folder in `Synestra.slnx`, so Solution Explorer mirrors the repository's
-documentation structure. Adding, moving, or removing documentation therefore
-requires updating the solution in the same change.
+documentation structure. Every file under `scripts/` must likewise appear in
+the matching solution folder because these scripts are part of the development
+and CI workflow. Adding, moving, or removing either kind of file requires
+updating the solution in the same change.
 
 Run the consistency check from the repository root:
 
 ```powershell
-./scripts/verify-solution-docs.ps1
+./scripts/verify-solution-items.ps1
 ```
 
-CI runs the same check and rejects documentation files missing from the
-solution, stale solution references, and files placed in a solution folder that
-does not match their filesystem directory.
+CI runs the same check and rejects documentation or script files missing from
+the solution, stale solution references, and files placed in a solution folder
+that does not match their filesystem directory.
