@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      POSTGRES_IMAGE: postgres:17.11-alpine3.24
+      TESTINGPLATFORM_TELEMETRY_OPTOUT: 1
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: |
+            **/*.csproj
+            Directory.Packages.props
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Test
+        run: dotnet test --solution Synestra.slnx --configuration Release --no-restore
+
+      - name: Audit NuGet vulnerabilities
+        run: dotnet package list --project Synestra.slnx --vulnerable --include-transitive
+
+      - name: Audit deprecated NuGet packages
+        run: dotnet package list --project Synestra.slnx --deprecated --include-transitive
+
+      - name: Install Trivy
+        uses: aquasecurity/setup-trivy@e07451d2e059ed86c2870430ea286b3a9e0bf241
+        with:
+          version: v0.72.0
+          cache: true
+
+      - name: Audit package licenses
+        run: trivy fs --scanners license --license-full --exit-code 0 .
+
+      - name: Audit package vulnerabilities
+        run: trivy fs --scanners vuln --severity HIGH,CRITICAL --exit-code 1 .
+
+      - name: Audit PostgreSQL image licenses
+        run: trivy image --scanners license --license-full --exit-code 0 "$POSTGRES_IMAGE"
+
+      - name: Audit PostgreSQL image vulnerabilities
+        run: trivy image --scanners vuln --severity HIGH,CRITICAL --exit-code 1 "$POSTGRES_IMAGE"

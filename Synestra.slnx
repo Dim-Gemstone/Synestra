@@ -5,6 +5,7 @@
     <File Path="docs/project-brief.md" />
     <File Path="docs/project-status.md" />
     <File Path="docs/roadmap.md" />
+    <File Path="docs/testing.md" />
   </Folder>
   <Folder Name="/docs/decisions/">
     <File Path="docs/decisions/0001-project-and-dependency-boundaries.md" />

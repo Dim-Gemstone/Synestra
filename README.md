@@ -21,5 +21,6 @@ inferred from enum values or persistence structure alone.
 - [Domain glossary](docs/domain-glossary.md)
 - [Job lifecycle](docs/job-lifecycle.md)
 - [Current project status](docs/project-status.md)
+- [Testing and prerequisites](docs/testing.md)
 - [Roadmap](docs/roadmap.md)
 - [Architecture decision records](docs/decisions/README.md)
