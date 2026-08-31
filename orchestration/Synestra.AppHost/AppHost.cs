@@ -2,6 +2,7 @@ var builder = DistributedApplication.CreateBuilder(args);
 
 var postgres = builder
     .AddPostgres("postgres")
+    .WithImageTag("17.11-alpine3.24")
     .WithDataVolume();
 
 var database = postgres.AddDatabase("synestra");
