@@ -6,8 +6,8 @@ decided.
 
 | Term | Meaning | Not | Confirmed semantics | Still undecided |
 |---|---|---|---|---|
-| `JobDefinition` | Registered type of executable work | A submitted execution instance | Has a stable UUID identity and a unique immutable machine-readable type; can be enabled or disabled | Who manages definitions and how disabling affects existing jobs |
-| `Job` | One logical unit of submitted work | One physical execution | References its `JobDefinition` by ID, snapshots its type, can have multiple attempts and preserves their history | Exact status derivation, cancellation and retry semantics |
+| `JobDefinition` | Registered type of executable work | A submitted execution instance | Has a stable UUID identity and a unique immutable machine-readable type; disabling blocks new submissions but does not affect existing jobs | Who manages definitions |
+| `Job` | One logical unit of submitted work | One physical execution | References its `JobDefinition` by ID, snapshots its type, can have multiple attempts and preserves their history; submission uses server-owned UUID v7 identity and UTC creation time | Exact status derivation, cancellation and retry semantics beyond Slice 1 |
 | `JobAttempt` | One execution try for a Job | The retry policy itself | Belongs to one Job and records one execution outcome | Exact creation point and state after lease expiration |
 | `Lease` | Time-bounded exclusive right for a Worker to execute an attempt | A permanent lock or execution result | Has acquisition and expiration times and cannot permanently assign work | Renewal, expiration recovery and late-result behavior |
 | `Worker` | Registered worker agent with identity, liveness and finite capacity | An OS thread, HTTP request, browser instance or individual CEF subprocess | May disappear and must periodically report liveness | Identity protocol, trust model, process lifetime and capacity accounting |
@@ -29,3 +29,14 @@ of CEF subprocesses. Those subprocesses are workload implementation details,
 not individual Synestra Workers.
 
 See `job-lifecycle.md` for confirmed and undecided lifecycle behavior.
+
+## Submit job terminology
+
+For Slice 1, an immediate Job has `AvailableAtUtc` equal to its server-generated
+`CreatedAtUtc`. A client may instead supply a later UTC availability time.
+Availability is not a recurring schedule, deadline, or execution timeout.
+
+The Job payload is an opaque JSON object from the control plane's perspective.
+Acceptance validates its JSON shape and resource limits but does not validate a
+workload-specific schema. See ADR-0007 for the authoritative submission
+contract, defaults, errors, and transaction semantics.

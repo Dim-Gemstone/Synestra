@@ -43,8 +43,11 @@ This document is not a replacement for ADRs. Important accepted decisions should
 | Entity IDs use UUID v7 | Accepted / Implemented | UUID v7 is the current identifier strategy. |
 | EF Core mappings live outside domain entities | Accepted / Implemented | Infrastructure-specific configuration must not shape the public domain model. |
 | Domain entities expose private setters and enforce invariants | Accepted / Implemented | The model is intentionally not designed as a collection of mutable EF data records. |
-| Jobs carry arbitrary JSON payloads | Accepted / Implemented | Payload contract, versioning, validation, and size limits remain open. |
+| Jobs carry opaque JSON object payloads | Accepted / Partially implemented | Slice 1 accepts objects up to 256 KiB and depth 32, rejects duplicate properties, and performs no workload-specific schema validation. Persistence already uses `jsonb`; API validation remains to be implemented. See ADR-0007. |
 | Jobs reference their creating definition by ID and snapshot its type | Accepted / Implemented | Clients use the unique immutable textual type; PostgreSQL enforces the internal relationship. See ADR-0006. |
+| Disabled definitions reject new submissions only | Accepted | Existing jobs are unaffected by later definition disabling. See ADR-0007. |
+| Slice 1 submission inputs and defaults are fixed | Accepted | Clients provide type, payload, and optional future `AvailableAtUtc`; the server owns ID and creation time and defaults priority to 0, maximum attempts to 1, and immediate availability to creation time. See ADR-0007. |
+| Slice 1 submission has stable success, error, and transaction semantics | Accepted | Success is `201`; errors use RFC 9457 with stable codes; definition validation and Job insertion occur in one `READ COMMITTED` transaction with a definition-row `FOR SHARE` lock. See ADR-0007. |
 | Synestra follows a pragmatic domain-oriented architecture | Accepted direction | Domain modeling is used where useful without adopting full ceremonial DDD by default. |
 
 ---
@@ -99,10 +102,9 @@ Implementation must not silently choose semantics for them unless the relevant t
 | Worker capacity | What does a capacity value represent: generic execution slots, browser instances, resource units, or something else? |
 | Capacity accounting | When is capacity reserved and released, and which component owns that accounting? |
 | Job status | How is `Job.Status` derived from or coordinated with `JobAttempt.Status`? |
-| Disabled definitions | Does `JobDefinition.IsEnabled = false` block new submissions only, execution of existing jobs, or both? |
-| Scheduling | Is `AvailableAtUtc` sufficient for the initial system, and will recurring/cron jobs ever belong to the core? |
-| Payload contract | How are JSON payload schema, versioning, validation, maximum size, and security handled? |
-| Transaction boundaries | Which Application operations define database transaction boundaries? |
+| Scheduling beyond Slice 1 | Slice 1 accepts only optional delayed availability. Will recurring/cron jobs, deadlines, timeouts, or other scheduling inputs ever belong to the core? |
+| Payload evolution | How are workload-specific schemas, contract versioning, and deeper security validation represented? |
+| Transaction boundaries beyond submission | Which Application operations other than SubmitJob define database transaction boundaries? |
 | Concurrency control | Which operations require pessimistic locking, optimistic concurrency, or both? |
 | Application persistence boundary | Should Application depend on custom persistence abstractions, or can some use cases work with more direct infrastructure-specific interfaces? |
 | Retention | How long are jobs, attempts, leases, and worker records retained? |
