@@ -13,6 +13,15 @@ dotnet restore
 dotnet test --solution Synestra.slnx
 ```
 
+Verify that Solution Explorer contains every Markdown file under `docs/` and no
+stale documentation references:
+
+```powershell
+./scripts/verify-solution-docs.ps1
+```
+
+CI runs this check before restore and tests.
+
 ## PostgreSQL integration tests
 
 Integration tests use Testcontainers and require:
