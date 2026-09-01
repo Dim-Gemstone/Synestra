@@ -30,7 +30,7 @@ This document is not a replacement for ADRs. Important accepted decisions should
 | Entity Framework Core is used for persistence | Accepted / Implemented | EF Core mappings and migrations already exist. |
 | Persistence is separated from the Domain project | Accepted | EF Core and PostgreSQL concerns must remain outside the Domain project. |
 | Domain does not depend on Persistence, API, Aspire, or other infrastructure | Accepted | This is a core architectural boundary. |
-| A dedicated Application layer will exist | Accepted direction | The project is intended to contain a separate application boundary between API and domain/persistence concerns. |
+| A dedicated Application layer exists | Accepted / Implemented | The SubmitJob use case provides the first application boundary between API and domain/persistence concerns. |
 | Application depends on Domain | Accepted | Application use cases orchestrate domain behavior. |
 | Persistence depends on Domain | Accepted | Persistence maps and stores domain entities. |
 | API acts as the composition root | Accepted direction | API may compose Application and Persistence while keeping business workflow logic outside controllers/endpoints. |
@@ -43,11 +43,11 @@ This document is not a replacement for ADRs. Important accepted decisions should
 | Entity IDs use UUID v7 | Accepted / Implemented | UUID v7 is the current identifier strategy. |
 | EF Core mappings live outside domain entities | Accepted / Implemented | Infrastructure-specific configuration must not shape the public domain model. |
 | Domain entities expose private setters and enforce invariants | Accepted / Implemented | The model is intentionally not designed as a collection of mutable EF data records. |
-| Jobs carry opaque JSON object payloads | Accepted / Partially implemented | Slice 1 accepts objects up to 256 KiB and depth 32, rejects duplicate properties, and performs no workload-specific schema validation. Persistence already uses `jsonb`; API validation remains to be implemented. See ADR-0007. |
+| Jobs carry opaque JSON object payloads | Accepted / Implemented for Slice 1 | Slice 1 accepts objects up to 256 KiB and depth 32, rejects duplicate properties, applies an HTTP request-body bound, and performs no workload-specific schema validation. Persistence uses `jsonb`. See ADR-0007. |
 | Jobs reference their creating definition by ID and snapshot its type | Accepted / Implemented | Clients use the unique immutable textual type; PostgreSQL enforces the internal relationship. See ADR-0006. |
 | Disabled definitions reject new submissions only | Accepted | Existing jobs are unaffected by later definition disabling. See ADR-0007. |
 | Slice 1 submission inputs and defaults are fixed | Accepted | Clients provide type, payload, and optional future `AvailableAtUtc`; the server owns ID and creation time and defaults priority to 0, maximum attempts to 1, and immediate availability to creation time. See ADR-0007. |
-| Slice 1 submission has stable success, error, and transaction semantics | Accepted | Success is `201`; errors use RFC 9457 with stable codes; definition validation and Job insertion occur in one `READ COMMITTED` transaction with a definition-row `FOR SHARE` lock. See ADR-0007. |
+| Slice 1 submission has stable success, error, and transaction semantics | Accepted / Implemented | The thin Client API endpoint returns `201`, errors use RFC 9457 with stable codes, and definition validation plus Job insertion occur in one `READ COMMITTED` transaction with a definition-row `FOR SHARE` lock. See ADR-0007. |
 | Synestra follows a pragmatic domain-oriented architecture | Accepted direction | Domain modeling is used where useful without adopting full ceremonial DDD by default. |
 
 ---
@@ -59,7 +59,6 @@ The following ideas are considered plausible directions but are not yet binding 
 | Proposal | Why it remains Proposed |
 |---|---|
 | Domain methods such as `job.StartAttempt()`, `attempt.Succeed()`, `lease.Renew()`, and `worker.RecordHeartbeat()` | This matches the current domain model, but lifecycle ownership and aggregate boundaries are not yet fully defined. |
-| Thin API endpoints delegating to Application use cases | This is the preferred direction, but the Application layer has not yet been implemented and validated. |
 | Focused application services/use cases instead of full CQRS/Mediator infrastructure | Likely sufficient for the current system, but the exact Application architecture should emerge from real use cases. |
 | PostgreSQL `FOR UPDATE SKIP LOCKED` for atomic job claiming | A strong candidate, but the final claim algorithm and transaction semantics have not been accepted yet. |
 | Worker heartbeat with offline detection | The system requires liveness tracking, but heartbeat intervals, timeout thresholds, and recovery rules are not defined. |
@@ -70,7 +69,6 @@ The following ideas are considered plausible directions but are not yet binding 
 | Worker/browser pools and groups | These originate from the earlier browser-management concept and may be useful later, but they are not required by the current core. |
 | Remote browser access | A potential future capability rather than a current core requirement. |
 | Headless CEF workers | A plausible worker mode, but rendering and interactive access requirements remain unresolved. |
-| Domain unit tests combined with real PostgreSQL concurrency integration tests | This is the preferred testing direction, but a concrete test architecture has not yet been established. |
 
 ---
 
