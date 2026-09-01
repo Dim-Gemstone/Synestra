@@ -15,10 +15,11 @@ public sealed class SubmitJobPersistenceTests(PostgreSqlFixture postgres)
     public async Task SubmitJob_PersistsJobWithoutAttemptInOneTransaction()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await MigrateAsync(cancellationToken);
-        var definition = await AddDefinitionAsync(enabled: true, cancellationToken);
+        await using var database = await postgres.CreateDatabaseAsync(cancellationToken);
+        await MigrateAsync(database.ConnectionString, cancellationToken);
+        var definition = await AddDefinitionAsync(database.ConnectionString, enabled: true, cancellationToken);
 
-        await using var provider = CreateProvider();
+        await using var provider = CreateProvider(database.ConnectionString);
         await using var scope = provider.CreateAsyncScope();
         var useCase = new SubmitJob(
             scope.ServiceProvider.GetRequiredService<ISubmitJobPersistence>(),
@@ -29,7 +30,7 @@ public sealed class SubmitJobPersistenceTests(PostgreSqlFixture postgres)
             cancellationToken);
 
         Assert.Equal(SubmitJobOutcome.Succeeded, result.Outcome);
-        await using var readContext = CreateContext();
+        await using var readContext = CreateContext(database.ConnectionString);
         var job = await readContext.Jobs.Include(x => x.Attempts).SingleAsync(x => x.Id == result.Job!.Id, cancellationToken);
         Assert.Equal(definition.Id, job.JobDefinitionId);
         Assert.Equal(definition.Type, job.Type);
@@ -40,16 +41,17 @@ public sealed class SubmitJobPersistenceTests(PostgreSqlFixture postgres)
     public async Task SubmitJob_DoesNotPersistForMissingOrDisabledDefinition()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await MigrateAsync(cancellationToken);
-        var disabled = await AddDefinitionAsync(enabled: false, cancellationToken);
-        await using var provider = CreateProvider();
+        await using var database = await postgres.CreateDatabaseAsync(cancellationToken);
+        await MigrateAsync(database.ConnectionString, cancellationToken);
+        var disabled = await AddDefinitionAsync(database.ConnectionString, enabled: false, cancellationToken);
+        await using var provider = CreateProvider(database.ConnectionString);
 
         var disabledResult = await ExecuteAsync(provider, disabled.Type, cancellationToken);
         var missingResult = await ExecuteAsync(provider, $"missing-{Guid.NewGuid():N}", cancellationToken);
 
         Assert.Equal(SubmitJobOutcome.DefinitionDisabled, disabledResult.Outcome);
         Assert.Equal(SubmitJobOutcome.DefinitionNotFound, missingResult.Outcome);
-        await using var readContext = CreateContext();
+        await using var readContext = CreateContext(database.ConnectionString);
         Assert.False(await readContext.Jobs.AnyAsync(x => x.Type == disabled.Type, cancellationToken));
     }
 
@@ -57,9 +59,10 @@ public sealed class SubmitJobPersistenceTests(PostgreSqlFixture postgres)
     public async Task DefinitionShareLock_OrdersConcurrentDisableBeforeLaterSubmission()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await MigrateAsync(cancellationToken);
-        var definition = await AddDefinitionAsync(enabled: true, cancellationToken);
-        await using var provider = CreateProvider();
+        await using var database = await postgres.CreateDatabaseAsync(cancellationToken);
+        await MigrateAsync(database.ConnectionString, cancellationToken);
+        var definition = await AddDefinitionAsync(database.ConnectionString, enabled: true, cancellationToken);
+        await using var provider = CreateProvider(database.ConnectionString);
         await using var submissionScope = provider.CreateAsyncScope();
         var persistence = submissionScope.ServiceProvider.GetRequiredService<ISubmitJobPersistence>();
         await using var submission = await persistence.BeginTransactionAsync(cancellationToken);
@@ -67,7 +70,7 @@ public sealed class SubmitJobPersistenceTests(PostgreSqlFixture postgres)
         var lockedDefinition = await submission.FindDefinitionForSubmissionAsync(definition.Type, cancellationToken);
         Assert.True(lockedDefinition!.IsEnabled);
 
-        await using var disableContext = CreateContext();
+        await using var disableContext = CreateContext(database.ConnectionString);
         var disableTask = disableContext.Database.ExecuteSqlInterpolatedAsync(
             $"UPDATE job_definitions SET is_enabled = FALSE WHERE id = {definition.Id}",
             cancellationToken);
@@ -81,11 +84,11 @@ public sealed class SubmitJobPersistenceTests(PostgreSqlFixture postgres)
 
         var laterResult = await ExecuteAsync(provider, definition.Type, cancellationToken);
         Assert.Equal(SubmitJobOutcome.DefinitionDisabled, laterResult.Outcome);
-        await using var readContext = CreateContext();
+        await using var readContext = CreateContext(database.ConnectionString);
         Assert.Equal(1, await readContext.Jobs.CountAsync(x => x.Type == definition.Type, cancellationToken));
     }
 
-    private async Task<SubmitJobResult> ExecuteAsync(
+    private static async Task<SubmitJobResult> ExecuteAsync(
         ServiceProvider provider,
         string type,
         CancellationToken cancellationToken)
@@ -97,28 +100,31 @@ public sealed class SubmitJobPersistenceTests(PostgreSqlFixture postgres)
         return await useCase.ExecuteAsync(new SubmitJobRequest(type, "{}"), cancellationToken);
     }
 
-    private ServiceProvider CreateProvider()
+    private static ServiceProvider CreateProvider(string connectionString)
     {
         var services = new ServiceCollection();
-        services.AddPersistence(postgres.ConnectionString);
+        services.AddPersistence(connectionString);
         return services.BuildServiceProvider();
     }
 
-    private SynestraDbContext CreateContext()
+    private static SynestraDbContext CreateContext(string connectionString)
     {
         var options = new DbContextOptionsBuilder<SynestraDbContext>()
-            .UseNpgsql(postgres.ConnectionString)
+            .UseNpgsql(connectionString)
             .Options;
         return new SynestraDbContext(options);
     }
 
-    private async Task MigrateAsync(CancellationToken cancellationToken)
+    private static async Task MigrateAsync(string connectionString, CancellationToken cancellationToken)
     {
-        await using var context = CreateContext();
+        await using var context = CreateContext(connectionString);
         await context.Database.MigrateAsync(cancellationToken);
     }
 
-    private async Task<JobDefinition> AddDefinitionAsync(bool enabled, CancellationToken cancellationToken)
+    private static async Task<JobDefinition> AddDefinitionAsync(
+        string connectionString,
+        bool enabled,
+        CancellationToken cancellationToken)
     {
         var definition = new JobDefinition(
             $"test.{Guid.NewGuid():N}",
@@ -126,7 +132,7 @@ public sealed class SubmitJobPersistenceTests(PostgreSqlFixture postgres)
             null,
             enabled,
             DateTime.UtcNow);
-        await using var context = CreateContext();
+        await using var context = CreateContext(connectionString);
         context.JobDefinitions.Add(definition);
         await context.SaveChangesAsync(cancellationToken);
         return definition;
