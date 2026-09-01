@@ -23,6 +23,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Synestra.Application\Synestra.Application.csproj" />
     <ProjectReference Include="..\Synestra.Domain\Synestra.Domain.csproj" />
     <ProjectReference Include="..\Synestra.Persistence\Synestra.Persistence.csproj" />
   </ItemGroup>

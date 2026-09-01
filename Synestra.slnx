@@ -39,6 +39,7 @@
     <Project Path="src/Synestra.Persistence/Synestra.Persistence.csproj" Id="1c38c2d2-7b55-4192-bdd4-b416b201d690" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Synestra.Api.IntegrationTests/Synestra.Api.IntegrationTests.csproj" />
     <Project Path="tests/Synestra.Application.Tests/Synestra.Application.Tests.csproj" />
     <Project Path="tests/Synestra.Domain.Tests/Synestra.Domain.Tests.csproj" />
     <Project Path="tests/Synestra.Persistence.IntegrationTests/Synestra.Persistence.IntegrationTests.csproj" />
