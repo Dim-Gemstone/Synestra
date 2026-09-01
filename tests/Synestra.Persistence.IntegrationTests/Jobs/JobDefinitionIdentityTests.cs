@@ -12,8 +12,9 @@ public sealed class JobDefinitionIdentityTests(PostgreSqlFixture postgres)
     public async Task Database_EnforcesJobDefinitionRelationship()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
+        await using var database = await postgres.CreateDatabaseAsync(cancellationToken);
         var options = new DbContextOptionsBuilder<SynestraDbContext>()
-            .UseNpgsql(postgres.ConnectionString)
+            .UseNpgsql(database.ConnectionString)
             .Options;
 
         await using (var migrationContext = new SynestraDbContext(options))

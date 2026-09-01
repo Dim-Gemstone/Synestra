@@ -39,16 +39,18 @@ The PostgreSQL image includes exact PostgreSQL and Alpine versions so upstream
 floating tags cannot silently change test behavior. Update the identical tag in
 the integration fixture, AppHost, CI audit, and this document together.
 
-All tests that use the shared database container belong to the
+All tests that use the shared PostgreSQL container belong to the
 `PostgreSQL integration tests` collection. xUnit can run unrelated collections
 in parallel, while database tests in this collection run serially. The fixture
-shares one container within a test run and disposes it afterward. Cross-run
-Testcontainers reuse is deliberately disabled because the feature is
-experimental and can retain state or resources.
+shares one container for startup efficiency, but creates a fresh database for
+every test and drops it afterward. Integration tests must use that per-test
+database and must never depend on execution order or data left by another test.
 
-Each integration test must isolate the database state it creates. When the
-suite grows beyond the current single test, prefer a fresh database/schema or a
-verified reset between tests rather than relying on test order.
+Cross-run Testcontainers reuse is deliberately disabled because the feature is
+experimental and can retain state or resources. If per-test database creation
+becomes a measurable bottleneck, replace it only with another verified isolation
+mechanism, such as a fresh schema or deterministic database reset. Do not trade
+test isolation for execution speed implicitly.
 
 ## Dependency and license audit
 

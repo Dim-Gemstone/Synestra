@@ -18,6 +18,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Synestra.Application\Synestra.Application.csproj" />
     <ProjectReference Include="..\Synestra.Domain\Synestra.Domain.csproj" />
   </ItemGroup>
 

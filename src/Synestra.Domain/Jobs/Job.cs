@@ -36,6 +36,11 @@ public sealed class Job
         Status = JobStatus.Pending;
         CreatedAtUtc = DomainValidation.Utc(createdAtUtc, nameof(createdAtUtc));
         AvailableAtUtc = DomainValidation.Utc(availableAtUtc, nameof(availableAtUtc));
+
+        if (AvailableAtUtc < CreatedAtUtc)
+        {
+            throw new ArgumentOutOfRangeException(nameof(availableAtUtc), "Availability time cannot precede creation time.");
+        }
     }
 
     public Guid Id { get; private set; }
