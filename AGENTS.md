@@ -20,7 +20,43 @@ See:
 - docs/domain-glossary.md
 - docs/job-lifecycle.md
 - docs/project-status.md
+- docs/roadmap.md
+- docs/contributing.md
+- docs/testing.md
 - docs/decisions/README.md
+
+Before implementation, review `docs/roadmap.md` and the relevant accepted
+ADRs. Accepted ADRs are authoritative if summary documents such as
+`docs/project-status.md` or `docs/roadmap.md` temporarily lag behind them.
+
+## Repository and solution structure
+
+- Production projects belong under `src/`, test projects under `tests/`, and
+  Aspire orchestration projects under `orchestration/`.
+- Every Markdown file under `docs/` and every file under `scripts/` must appear
+  in the corresponding solution folder in `Synestra.slnx`.
+- When adding, moving, renaming, or deleting a project, document, or script,
+  update `Synestra.slnx` in the same change. Solution folders must mirror the
+  corresponding filesystem directories.
+- Before completing any change, run `./scripts/verify-solution-items.ps1`.
+- Before completing an implementation change, run
+  `dotnet test --solution Synestra.slnx`. See `docs/testing.md` for the full
+  testing guide and `docs/contributing.md` for branch, commit, and pull request
+  conventions.
+- Before committing, run `git diff --check`, review the complete diff, and
+  inspect `git status --short --branch`.
+
+## Git workflow
+
+Follow the branch, commit, and pull request conventions in
+`docs/contributing.md`.
+
+- When a task requires a dedicated branch and the user has not specified its
+  name, infer a compliant branch name from the requested outcome and state the
+  proposed name before creating it.
+- After completing a change, always propose one Conventional Commit title based
+  on the final diff, even if the user did not explicitly request one.
+- Do not create a commit or pull request without explicit user confirmation.
 
 ## Architecture
 
