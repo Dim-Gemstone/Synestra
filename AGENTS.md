@@ -156,3 +156,15 @@ When asked only to analyze code, do not modify files.
 
 Keep generated migrations limited to schema changes implied by the requested
 model change. Do not manually clean up generated migration code unless needed.
+
+After completing a roadmap slice or another substantial implementation change,
+include a brief roadmap checkpoint in the final response that states:
+
+- which milestone or slice was completed;
+- what now works end-to-end;
+- the next roadmap slice;
+- what still separates the project from a minimally useful product.
+
+Base the checkpoint on `docs/roadmap.md`, accepted ADRs, and verified
+implementation. Do not present planned or partially implemented work as
+complete. Omit the checkpoint for minor fixes and other non-substantial changes.
