@@ -10,7 +10,7 @@ decided.
 | `Job` | One logical unit of submitted work | One physical execution | References its `JobDefinition` by ID, snapshots its type, can have multiple attempts and preserves their history; submission uses server-owned UUID v7 identity and UTC creation time | Exact status derivation, cancellation and retry semantics beyond Slice 1 |
 | `JobAttempt` | One execution try for a Job | The retry policy itself | Belongs to one Job and records one execution outcome | Exact creation point and state after lease expiration |
 | `Lease` | Time-bounded exclusive right for a Worker to execute an attempt | A permanent lock or execution result | Has acquisition and expiration times and cannot permanently assign work | Renewal, expiration recovery and late-result behavior |
-| `Worker` | Registered worker agent with identity, liveness and finite capacity | An OS thread, HTTP request, browser instance or individual CEF subprocess | May disappear and must periodically report liveness | Identity protocol, trust model, process lifetime and capacity accounting |
+| `Worker` | Registered worker agent with identity, liveness and finite capacity | An OS thread, HTTP request, browser instance or individual CEF subprocess | Agent-persisted UUID v7 identity, replaceable UUID v7 process session, supported type set and execution-slot limit; registration and heartbeat persist liveness under ADR-0011 | Future authentication, process lifetime and capacity reservation/release |
 
 ## Working execution terminology
 
@@ -29,6 +29,23 @@ of CEF subprocesses. Those subprocesses are workload implementation details,
 not individual Synestra Workers.
 
 See `job-lifecycle.md` for confirmed and undecided lifecycle behavior.
+
+## Worker registration terminology
+
+ADR-0011 implements Slice 2A through the Worker API in a trusted/private boundary.
+WorkerId is stable across launches; SessionId identifies one process launch.
+Neither is an authentication credential. Registration with a different SessionId
+replaces the current session; subsequent requests from the old session conflict,
+including delayed registration PUTs. Durable accepted-session history distinguishes
+an unseen process session from a previously replaced one. Same-session registration
+continues to update desired state.
+
+Supported types are a full, ordinal case-sensitive capability set independent of
+JobDefinition existence or enabled state. Capacity is the maximum concurrent
+execution-slot count; slots are not yet reserved or released. Registration is also
+liveness confirmation. LastSeenAtUtc never moves backwards; offline is derived at
+30 seconds since last seen, with a recommended heartbeat every 10 seconds. There
+is no persisted online flag, monitor, Worker read endpoint or loss recovery yet.
 
 ## Scenario execution terminology
 

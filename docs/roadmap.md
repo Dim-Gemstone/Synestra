@@ -1,6 +1,7 @@
 # Roadmap
 
-Slices 1, 1A, and 1B are implemented. ADR-0008 accepts the execution direction and
+Slices 1, 1A, 1B, and 2A are implemented. Slice 2 remains incomplete.
+ADR-0011 defines registration and liveness. ADR-0008 accepts the execution direction and
 the requirements illustrated in `execution-scenarios.md`. The later slices below are
 a proposed delivery sequence, not implemented features or approval of their open
 protocol decisions. Resolve the listed decisions before implementing each slice.
@@ -99,15 +100,16 @@ Workload input/version/secret or artifact-reference extensions should receive a
 separate submission slice only when a concrete scenario needs them. Preserve
 ADR-0006 and explicitly evolve ADR-0007's strict request contract when necessary.
 
-## Slice 2 — Execute a submitted Job (proposed)
+## Slice 2 — Execute a submitted Job (incomplete)
 
 A registered Worker executes one supported Job and a client retrieves its outcome
 and a small workload-specific result. Automatic retries and pause are excluded.
 
 Decisions required before implementation:
 
-- Worker identity/trust, registration, heartbeat, supported workload routing,
-  capacity reservation/release, and execution resource boundary;
+- Worker identity/trust, registration, heartbeat, capabilities and capacity meaning
+  are resolved by ADR-0011; capacity reservation/release, claim eligibility and
+  execution resource boundary still require decisions;
 - atomic claim algorithm and transaction boundaries, availability ordering,
   Job/attempt transitions, lease duration/maintenance, and loss detection;
 - lost-execution finalization without automatic rerun, late reports, duplicate
@@ -125,9 +127,37 @@ Tasks and completion criteria:
 - test state invariants, concurrent claims/capacity, expiration/finalization races,
   repeated reports, and the submit-to-result path against real PostgreSQL.
 
-Registration and heartbeat may be separate implementation PRs within this slice.
 The slice is incomplete until the execution path and its defined loss behavior
 work. It does not require a general Workflow engine or full CEF scenario runtime.
+
+### Slice 2A — Worker registration and liveness (implemented)
+
+- ADR-0011 defines stable Worker identity, process-session replacement, temporary
+  trusted/private deployment, strict registration, heartbeat and liveness contracts;
+- Worker API PUT persists desired name, positive execution-slot capacity and a
+  full ordinal supported-type set independent of definition existence/enabled state;
+- same-session registration updates configuration and liveness; a different session
+  atomically replaces it and fences old-session heartbeats and delayed PUTs using
+  durable accepted-session history;
+- Application-owned READ COMMITTED transactions and PostgreSQL advisory/row locks
+  coordinate first insertion, replacement and heartbeat across API instances;
+- server TimeProvider supplies UTC timestamps, LastSeenAtUtc is monotonic, and
+  focused options provide 10-second heartbeat and derived 30-second offline timeout;
+- migration preserves legacy Workers and adds paired nullable session fields,
+  capacity check, constrained capability table and minimal accepted-session history;
+- Domain, Application, PostgreSQL concurrency/rollback/constraint and API restart
+  tests cover the implemented registration and liveness path.
+
+No Jobs execute, attempts or leases are created, or capacity is reserved in 2A.
+There is no Worker executable, read/list endpoint, background monitor or recovery.
+
+### Slice 2B — Atomic claim and execution ownership (next)
+
+Decide and implement atomic claim, JobAttempt creation, session-bound Lease and
+capacity reservation. Future claim/Lease operations must consider both WorkerId
+and SessionId. Ordering, eligibility, transitions, lease duration and transaction
+semantics still require an accepted decision. Renewal, execution, completion/results
+and lost-execution recording remain further increments before Slice 2 is complete.
 
 ## Slice 3 — Observe and cancel a long-running scenario (proposed)
 
@@ -165,10 +195,10 @@ and control requests. Checkpoints and workflow state remain conditional on later
 Keep Job and JobAttempt distinct; do not add a permanent one-attempt-per-Job
 constraint or speculative retry/workflow tables.
 
-Currently submission, opt-in idempotent replay, and retrieval by ID are implemented;
-execution, results, and control are not. The proposed next product increment is
-Slice 2, starting with its required protocol decisions. A minimally useful
-execution product still needs Worker execution, reliable ownership/loss handling,
+Currently submission, opt-in idempotent replay, retrieval by ID, and Worker
+registration/liveness are implemented; execution, results, and control are not.
+The next increment is Slice 2B, starting with its required protocol decisions.
+A minimally useful execution product still needs Worker execution, reliable ownership/loss handling,
 client-visible outcomes, and a concrete workload. Long-running scenario control
 follows in Slice 3; automatic retries, pause, and Workflow are not prerequisites
 for the first execution slice.

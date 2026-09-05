@@ -1,7 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Synestra.Application.Jobs;
+using Synestra.Application.Workers;
 using Synestra.Persistence.Jobs;
+using Synestra.Persistence.Workers;
 
 namespace Synestra.Persistence.Extensions;
 
@@ -12,6 +14,7 @@ public static class DependencyInjection
         s.AddNpgsql<SynestraDbContext>(connectionString);
         s.AddScoped<IGetJobPersistence, GetJobPersistence>();
         s.AddScoped<ISubmitJobPersistence, SubmitJobPersistence>();
+        s.AddScoped<IWorkerPersistence, WorkerPersistence>();
         return s;
     }
 }
