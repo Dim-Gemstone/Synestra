@@ -8,10 +8,18 @@ public sealed class SubmitJob(ISubmitJobPersistence persistence, TimeProvider ti
 {
     public const int MaximumPayloadSizeInBytes = 256 * 1024;
     public const int MaximumPayloadDepth = 32;
+    public const int MaximumIdempotencyKeyLength = 128;
 
     public async Task<SubmitJobResult> ExecuteAsync(SubmitJobRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
+
+        if (request.IdempotencyKey is { } key
+            && (key.Length is 0 or > MaximumIdempotencyKeyLength
+                || key.Any(character => character is < '!' or > '~' or ',')))
+        {
+            return Invalid("Idempotency key must contain 1–128 visible ASCII characters, excluding comma.");
+        }
 
         if (string.IsNullOrWhiteSpace(request.Type) || request.Type.Length > 100)
         {
@@ -30,13 +38,31 @@ public sealed class SubmitJob(ISubmitJobPersistence persistence, TimeProvider ti
             return Invalid("Availability time must have an explicit UTC offset.");
         }
 
-        var availableAtUtc = request.AvailableAtUtc?.UtcDateTime ?? createdAtUtc;
-        if (availableAtUtc < createdAtUtc)
+        if (request.IdempotencyKey is null && request.AvailableAtUtc?.UtcDateTime < createdAtUtc)
         {
             return Invalid("Availability time cannot precede creation time.");
         }
 
         await using var transaction = await persistence.BeginTransactionAsync(cancellationToken);
+        var identity = new SubmitJobIdentity(request.Type, request.Payload, request.AvailableAtUtc);
+        if (request.IdempotencyKey is not null)
+        {
+            var submission = await transaction.LockIdempotencyKeyAsync(request.IdempotencyKey, cancellationToken);
+            if (submission is not null)
+            {
+                return submission.Identity == identity
+                    ? new SubmitJobResult(SubmitJobOutcome.Succeeded, submission.Job)
+                    : new SubmitJobResult(SubmitJobOutcome.IdempotencyKeyConflict);
+            }
+
+            createdAtUtc = timeProvider.GetUtcNow().UtcDateTime;
+            if (request.AvailableAtUtc?.UtcDateTime < createdAtUtc)
+            {
+                return Invalid("Availability time cannot precede creation time.");
+            }
+        }
+
+        var availableAtUtc = request.AvailableAtUtc?.UtcDateTime ?? createdAtUtc;
         var definition = await transaction.FindDefinitionForSubmissionAsync(request.Type, cancellationToken);
         if (definition is null)
         {
@@ -50,8 +76,15 @@ public sealed class SubmitJob(ISubmitJobPersistence persistence, TimeProvider ti
 
         var job = new Job(definition.Id, definition.Type, request.Payload, 0, 1, createdAtUtc, availableAtUtc);
         transaction.Add(job);
+        var details = new JobDetails(
+            job.Id, job.Type, job.Status, job.Priority, job.MaxAttempts, job.CreatedAtUtc, job.AvailableAtUtc);
+        if (request.IdempotencyKey is not null)
+        {
+            transaction.AddSubmission(request.IdempotencyKey, new JobSubmission(identity, details));
+        }
+
         await transaction.CommitAsync(cancellationToken);
-        return new SubmitJobResult(SubmitJobOutcome.Succeeded, job);
+        return new SubmitJobResult(SubmitJobOutcome.Succeeded, details);
     }
 
     private static SubmitJobResult? ValidatePayload(string? payload)

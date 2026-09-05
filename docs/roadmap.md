@@ -1,7 +1,7 @@
 # Roadmap
 
-Slice 1 is implemented. ADR-0008 accepts the execution direction and the
-requirements illustrated in `execution-scenarios.md`. The later slices below are
+Slices 1, 1A, and 1B are implemented. ADR-0008 accepts the execution direction and
+the requirements illustrated in `execution-scenarios.md`. The later slices below are
 a proposed delivery sequence, not implemented features or approval of their open
 protocol decisions. Resolve the listed decisions before implementing each slice.
 
@@ -70,15 +70,30 @@ Implemented:
 This extends Slice 1 without changing its payload/default semantics. Execution
 progress, results, filtering, and history can extend the read surface later.
 
-## Slice 1B — Submit idempotently (proposed)
+## Slice 1B — Submit idempotently
 
 A client can repeat a submission after losing the response without creating a
 second Job.
 
-Before implementation, decide key scope/ownership, request equivalence,
-conflicting reuse, retention, and response replay. Implement transactional
-deduplication with PostgreSQL concurrency tests and API tests. This is independent
-of automatic workload retries and does not guarantee exactly-once external effects.
+Implemented:
+
+- ADR-0010 defines opt-in `Idempotency-Key`, its temporarily global scope,
+  exact payload-text equivalence, availability presence/value, conflict, and
+  lifetime contracts;
+- SubmitJob coordinates keyed requests within its PostgreSQL transaction and
+  persists the key, request identity, and original success snapshot with the Job;
+- database uniqueness and transaction advisory locks prevent concurrent keyed
+  requests from creating duplicate Jobs;
+- equivalent replay returns the original `201` representation and Location,
+  including after API restart, definition disabling, or elapsed availability;
+- conflicting reuse returns RFC 9457 `409` with `idempotency_key_conflict`;
+- requests without a key preserve ADR-0007 behavior, and GET preserves ADR-0009;
+- Application, PostgreSQL concurrency/rollback/constraint tests, and API
+  integration tests cover the completed behavior.
+
+Keys and identities are retained at least as long as their Jobs; no cleanup or
+retention policy is implemented. Submission idempotency is independent of
+automatic workload retries and does not guarantee exactly-once external effects.
 
 Workload input/version/secret or artifact-reference extensions should receive a
 separate submission slice only when a concrete scenario needs them. Preserve
@@ -144,15 +159,15 @@ Pause and automatic retries remain excluded.
 
 ## Schema evolution and product checkpoint
 
-Add schema changes alongside the slice that needs them. Candidate areas include
-submission deduplication, attempt results, artifacts, progress, and control
-requests. Checkpoints and workflow state remain conditional on later decisions.
+Add schema changes alongside the slice that needs them. Submission deduplication
+is implemented. Candidate areas include attempt results, artifacts, progress,
+and control requests. Checkpoints and workflow state remain conditional on later decisions.
 Keep Job and JobAttempt distinct; do not add a permanent one-attempt-per-Job
 constraint or speculative retry/workflow tables.
 
-Currently submission and retrieval by ID are implemented; execution, results,
-and control are not. The proposed next product increment is Slice 1B, while
-defining the Slice 2 protocol is the next architectural step. A minimally useful
+Currently submission, opt-in idempotent replay, and retrieval by ID are implemented;
+execution, results, and control are not. The proposed next product increment is
+Slice 2, starting with its required protocol decisions. A minimally useful
 execution product still needs Worker execution, reliable ownership/loss handling,
 client-visible outcomes, and a concrete workload. Long-running scenario control
 follows in Slice 3; automatic retries, pause, and Workflow are not prerequisites
