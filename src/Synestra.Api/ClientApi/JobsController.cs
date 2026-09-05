@@ -5,8 +5,22 @@ namespace Synestra.Api.ClientApi;
 
 [ApiController]
 [Route("api/client/jobs")]
-public sealed class JobsController(SubmitJob submitJob) : ControllerBase
+public sealed class JobsController(SubmitJob submitJob, GetJob getJob) : ControllerBase
 {
+    [HttpGet("{id:guid}")]
+    [ProducesResponseType<GetJobResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Get(Guid id, CancellationToken cancellationToken)
+    {
+        var result = await getJob.ExecuteAsync(id, cancellationToken);
+        return result.Outcome switch
+        {
+            GetJobOutcome.Succeeded => Ok(MapResponse(result.Job!)),
+            GetJobOutcome.NotFound => Problem(StatusCodes.Status404NotFound, "job_not_found"),
+            _ => throw new InvalidOperationException($"Unknown get-job outcome: {result.Outcome}.")
+        };
+    }
+
     [HttpPost]
     [Consumes("application/json")]
     [ProducesResponseType<SubmitJobResponse>(StatusCodes.Status201Created)]
@@ -56,8 +70,18 @@ public sealed class JobsController(SubmitJob submitJob) : ControllerBase
             job.MaxAttempts,
             job.CreatedAtUtc,
             job.AvailableAtUtc);
+        Response.Headers.Location = $"/api/client/jobs/{job.Id}";
         return StatusCode(StatusCodes.Status201Created, response);
     }
+
+    private static GetJobResponse MapResponse(JobDetails job) => new(
+        job.Id,
+        job.Type,
+        job.Status.ToString().ToLowerInvariant(),
+        job.Priority,
+        job.MaxAttempts,
+        job.CreatedAtUtc,
+        job.AvailableAtUtc);
 
     private ObjectResult Problem(int status, string code, string? detail = null)
     {
@@ -70,6 +94,7 @@ public sealed class JobsController(SubmitJob submitJob) : ControllerBase
                 "payload_too_large" => "The payload is too large.",
                 "job_definition_not_found" => "The job definition was not found.",
                 "job_definition_disabled" => "The job definition is disabled.",
+                "job_not_found" => "The job was not found.",
                 _ => "The request failed."
             },
             Type = $"urn:synestra:problem:{code.Replace('_', '-')}",

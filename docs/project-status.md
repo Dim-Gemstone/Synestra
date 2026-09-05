@@ -52,6 +52,7 @@ This document is not a replacement for ADRs. Important accepted decisions should
 | Disabled definitions reject new submissions only | Accepted | Existing jobs are unaffected by later definition disabling. See ADR-0007. |
 | Slice 1 submission inputs and defaults are fixed | Accepted | Clients provide type, payload, and optional future `AvailableAtUtc`; the server owns ID and creation time and defaults priority to 0, maximum attempts to 1, and immediate availability to creation time. See ADR-0007. |
 | Slice 1 submission has stable success, error, and transaction semantics | Accepted / Implemented | The thin Client API endpoint returns `201`, errors use RFC 9457 with stable codes, and definition validation plus Job insertion occur in one `READ COMMITTED` transaction with a definition-row `FOR SHARE` lock. See ADR-0007. |
+| Slice 1A Job retrieval has a stable minimal contract | Accepted / Implemented | Clients can retrieve a persisted Job by ID. The response excludes payload and internal or future execution data; missing Jobs use `job_not_found`, and successful submission identifies the resource with `Location`. See ADR-0009. |
 | Synestra follows a pragmatic domain-oriented architecture | Accepted direction | Domain modeling is used where useful without adopting full ceremonial DDD by default. |
 
 ---
