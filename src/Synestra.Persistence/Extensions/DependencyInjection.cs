@@ -10,6 +10,7 @@ public static class DependencyInjection
     public static IServiceCollection AddPersistence(this IServiceCollection s, string connectionString)
     {
         s.AddNpgsql<SynestraDbContext>(connectionString);
+        s.AddScoped<IGetJobPersistence, GetJobPersistence>();
         s.AddScoped<ISubmitJobPersistence, SubmitJobPersistence>();
         return s;
     }

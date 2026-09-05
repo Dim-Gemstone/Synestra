@@ -53,17 +53,19 @@ Implementation requirements:
 - cover domain defaults/invariants, PostgreSQL persistence and disable/submit
   concurrency, and API request/response/error contracts with tests.
 
-## Slice 1A — Observe a submitted Job (proposed next slice)
+## Slice 1A — Observe a submitted Job
 
 A client can retrieve an accepted Job by ID and inspect its persisted state.
 
-Tasks and completion criteria:
+Implemented:
 
-- define a minimal read response, missing-Job error, and data exposure rules;
-- implement a focused Application query and thin Client API endpoint;
-- verify retrieval after submission and after API restart against PostgreSQL;
-- add a stable Location header to submission once the read endpoint exists;
-- cover API contracts and persistence with tests.
+- ADR-0009 defines the minimal read response, missing-Job error, and data
+  exposure rules;
+- a focused Application query and thin Client API endpoint retrieve a Job by ID;
+- PostgreSQL remains the source of truth across API process restarts;
+- successful submission includes a stable Location header;
+- Application, PostgreSQL integration, and API integration tests cover the
+  retrieval behavior and contracts.
 
 This extends Slice 1 without changing its payload/default semantics. Execution
 progress, results, filtering, and history can extend the read surface later.
@@ -148,9 +150,10 @@ requests. Checkpoints and workflow state remain conditional on later decisions.
 Keep Job and JobAttempt distinct; do not add a permanent one-attempt-per-Job
 constraint or speculative retry/workflow tables.
 
-Currently submission is implemented; execution, results, and control are not.
-The proposed next increment is Slice 1A, while defining the Slice 2 protocol is
-the next architectural step. A minimally useful execution product still needs
-Worker execution, reliable ownership/loss handling, client-visible outcomes, and
-a concrete workload. Long-running scenario control follows in Slice 3; automatic
-retries, pause, and Workflow are not prerequisites for the first execution slice.
+Currently submission and retrieval by ID are implemented; execution, results,
+and control are not. The proposed next product increment is Slice 1B, while
+defining the Slice 2 protocol is the next architectural step. A minimally useful
+execution product still needs Worker execution, reliable ownership/loss handling,
+client-visible outcomes, and a concrete workload. Long-running scenario control
+follows in Slice 3; automatic retries, pause, and Workflow are not prerequisites
+for the first execution slice.

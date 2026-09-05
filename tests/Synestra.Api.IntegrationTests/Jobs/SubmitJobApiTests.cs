@@ -25,8 +25,7 @@ public sealed class SubmitJobApiTests(PostgreSqlFixture postgres) : IAsyncLifeti
         _database = await postgres.CreateDatabaseAsync(cancellationToken);
         await using var context = CreateContext();
         await context.Database.MigrateAsync(cancellationToken);
-        _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
-            builder.UseSetting("ConnectionStrings:synestra", _database.ConnectionString));
+        _factory = CreateFactory();
         _client = _factory.CreateClient();
     }
 
@@ -38,7 +37,7 @@ public sealed class SubmitJobApiTests(PostgreSqlFixture postgres) : IAsyncLifeti
     }
 
     [Fact]
-    public async Task EnabledDefinition_CreatesPersistedJobAndReturnsContract()
+    public async Task EnabledDefinition_CreatesPersistedJobAndCanRetrieveItAfterApiRestart()
     {
         var definition = await AddDefinitionAsync(enabled: true);
 
@@ -50,9 +49,10 @@ public sealed class SubmitJobApiTests(PostgreSqlFixture postgres) : IAsyncLifeti
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
-        Assert.Null(response.Headers.Location);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         Assert.Equal(7, body.EnumerateObject().Count());
+        var id = body.GetProperty("id").GetGuid();
+        Assert.Equal($"/api/client/jobs/{id}", response.Headers.Location?.OriginalString);
         Assert.Equal(definition.Type, body.GetProperty("type").GetString());
         Assert.Equal("pending", body.GetProperty("status").GetString());
         Assert.Equal(0, body.GetProperty("priority").GetInt32());
@@ -66,6 +66,40 @@ public sealed class SubmitJobApiTests(PostgreSqlFixture postgres) : IAsyncLifeti
         var job = await context.Jobs.SingleAsync(TestContext.Current.CancellationToken);
         Assert.Equal(definition.Id, job.JobDefinitionId);
         Assert.Equal(definition.Type, job.Type);
+
+        _client.Dispose();
+        await _factory.DisposeAsync();
+        _factory = CreateFactory();
+        _client = _factory.CreateClient();
+
+        var getResponse = await _client.GetAsync(response.Headers.Location, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, getResponse.StatusCode);
+        Assert.Equal("application/json", getResponse.Content.Headers.ContentType?.MediaType);
+        var getBody = await getResponse.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
+        Assert.Equal(7, getBody.EnumerateObject().Count());
+        Assert.Equal(id, getBody.GetProperty("id").GetGuid());
+        Assert.Equal(definition.Type, getBody.GetProperty("type").GetString());
+        Assert.Equal("pending", getBody.GetProperty("status").GetString());
+        Assert.Equal(0, getBody.GetProperty("priority").GetInt32());
+        Assert.Equal(1, getBody.GetProperty("maxAttempts").GetInt32());
+        Assert.EndsWith("Z", getBody.GetProperty("createdAtUtc").GetString());
+        Assert.EndsWith("Z", getBody.GetProperty("availableAtUtc").GetString());
+        Assert.False(getBody.TryGetProperty("payload", out _));
+    }
+
+    [Fact]
+    public async Task MissingJob_ReturnsStableProblem()
+    {
+        var id = Guid.CreateVersion7();
+
+        var response = await _client.GetAsync($"/api/client/jobs/{id}", TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
+        Assert.Equal("job_not_found", problem.GetProperty("code").GetString());
+        Assert.Equal("urn:synestra:problem:job-not-found", problem.GetProperty("type").GetString());
+        Assert.Equal((int)HttpStatusCode.NotFound, problem.GetProperty("status").GetInt32());
     }
 
     [Theory]
@@ -154,4 +188,8 @@ public sealed class SubmitJobApiTests(PostgreSqlFixture postgres) : IAsyncLifeti
             .Options;
         return new SynestraDbContext(options);
     }
+
+    private WebApplicationFactory<Program> CreateFactory() =>
+        new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+            builder.UseSetting("ConnectionStrings:synestra", _database.ConnectionString));
 }
