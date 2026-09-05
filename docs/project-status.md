@@ -23,7 +23,11 @@ This document is not a replacement for ADRs. Important accepted decisions should
 | The control plane is independent of a specific workload | Accepted | Core scheduling and execution semantics must not depend on CEF or browser automation. |
 | Browser / CEF automation is the first concrete workload | Accepted | It provides a real execution scenario for validating the general Synestra architecture. |
 | `JobDefinition → Job → JobAttempt → Lease → Worker` are the core domain concepts | Accepted / Implemented | These concepts already form the current domain model. |
-| A `Job` can have multiple `JobAttempt` instances | Accepted / Implemented | Retries and recovery are represented through separate execution attempts. |
+| A `Job` can have multiple `JobAttempt` instances | Accepted / Model implemented | Attempt history supports future retries; automatic retries are not implemented and are deferred by ADR-0008. Resume/attempt semantics remain open. |
+| A Job can execute a complete scenario | Accepted / Not implemented | Worker-side handlers own internal stages, loops, and browser/API operations. See ADR-0008. |
+| Execution exposes progress and results | Accepted / Not implemented | Current stage, counters, partial and final results are required; large files use artifact references. Detailed contracts remain open. |
+| Running cancellation is cooperative | Accepted / Not implemented | Stop at a safe point and preserve available partial results; completed external effects are not undone. Exact transitions remain open. |
+| Initial execution has no automatic retries | Accepted | Lost execution must be recorded without automatic rerun. Preserve multiple attempts and history for a separately defined retry policy. See ADR-0008. |
 | A `Lease` represents temporary execution ownership | Accepted | A worker receives a time-bounded right to execute an attempt rather than permanent ownership of a job. |
 | A Worker has finite capacity | Accepted concept | The exact meaning and accounting model of capacity are still open. |
 | PostgreSQL is the primary durable store | Accepted / Implemented | PostgreSQL is also expected to participate in distributed coordination. |
@@ -64,6 +68,7 @@ The following ideas are considered plausible directions but are not yet binding 
 | Worker heartbeat with offline detection | The system requires liveness tracking, but heartbeat intervals, timeout thresholds, and recovery rules are not defined. |
 | Lease renewal | The lease model strongly suggests renewal, but the protocol and failure semantics remain undefined. |
 | Retry with backoff | Retries are expected, but retry policy, timing, classification, and ownership are not yet defined. |
+| Live-process pause | Candidate for a later feature; resource, lease, and capacity semantics are undefined. Durable resume is a separate open question. |
 | A worker agent supervises separate execution processes | This fits dynamic workloads and CEF process trees, but agent lifetime and process-isolation rules are not yet defined. |
 | Worker-driven work acquisition through the Worker API | This is the simplest initial direction, but polling, long-polling, streaming, push, or broker-based delivery has not been selected. |
 | Worker/browser pools and groups | These originate from the earlier browser-management concept and may be useful later, but they are not required by the current core. |
@@ -96,7 +101,10 @@ Implementation must not silently choose semantics for them unless the relevant t
 | Late completion | What happens when a worker reports success or failure after losing its lease? |
 | Retry creation | When exactly is a new `JobAttempt` created? |
 | Retry policy | How are maximum attempts, backoff, and recoverable/non-recoverable failures defined? |
-| Cancellation | What are the semantics of cancelling Pending and Running jobs? |
+| Cancellation | Given cooperative running cancellation, what are the exact transitions, Pending behavior, completion races, and unresponsive-handler rules? |
+| Pause and resume | How would live-process pause work, and is durable continuation after restart or relocation required? How would resume relate to attempts? |
+| Execution data | What are the result/artifact contracts, progress ordering, checkpoint compatibility, and technical versus business success rules? |
+| Workload inputs | How are secrets delivered, input snapshots/versioning handled, and concurrent account access constrained? |
 | Worker capacity | What does a capacity value represent: generic execution slots, browser instances, resource units, or something else? |
 | Capacity accounting | When is capacity reserved and released, and which component owns that accounting? |
 | Job status | How is `Job.Status` derived from or coordinated with `JobAttempt.Status`? |
@@ -140,6 +148,9 @@ Deferred items are not rejected. They are intentionally postponed until the curr
 | Docker Compose or alternative deployment generation | Useful for future deployment, but not necessary for the current development phase. |
 | Recurring / cron jobs | Delayed execution already exists conceptually through availability time; recurring scheduling can be introduced later if needed. |
 | Submission idempotency | Deferred until after the initial submit-job slice; duplicate-submission behavior under client retries must be addressed before idempotent delivery is claimed. |
+| Automatic retries | A separate policy decision and slice will define eligibility, timing, limits, and external-effect safety. Initial execution records loss without rerunning work. |
+| Pause | Outside the first execution slice; live-process pause is only a candidate. Durable resume is not promised. |
+| First-class Workflow orchestration | May later compose standalone Jobs. Internal scenario stages and loops do not require an orchestration engine. |
 | Worker groups / browser pools | Useful only after basic worker registration, capacity, claiming, and lease semantics work. |
 | Remote interactive browser rendering | A future browser-worker feature rather than a control-plane prerequisite. |
 | Advanced worker resource models | Generic capacity should be understood first before introducing CPU/memory/browser-specific resource scheduling. |
@@ -202,6 +213,10 @@ Workers receive temporary leases rather than permanent ownership of jobs.
 
 Workers have finite execution capacity and may disappear unexpectedly.
 
-The system must therefore support durable execution state, failure recovery, retries, and execution history.
+The system must therefore support durable execution state and execution history.
+The initial execution path records lost execution without automatic retries;
+retry policy and durable continuation are subsequent decisions. ADR-0008 accepts
+scenario execution, progress/results, and cooperative cancellation as product
+requirements. Pause and first-class Workflow orchestration are deferred.
 
 Browser / CEF automation is the first concrete worker workload used to validate this execution model, but browser-specific concerns must not define the Synestra core architecture.

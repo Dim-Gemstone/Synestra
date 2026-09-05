@@ -22,5 +22,6 @@ Deferred ideas that have not yet required an architectural decision should norma
 | 0005 | Worker communication through the control-plane API | Accepted |
 | 0006 | Job definition identity | Accepted |
 | 0007 | Submit job semantics | Accepted |
+| 0008 | Execution unit and orchestration boundary | Accepted |
 
 See `../project-status.md` for unresolved questions, proposals, rejected directions, and deferred work.
