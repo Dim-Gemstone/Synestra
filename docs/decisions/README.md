@@ -25,5 +25,6 @@ Deferred ideas that have not yet required an architectural decision should norma
 | 0008 | Execution unit and orchestration boundary | Accepted |
 | 0009 | Observe Job contract | Accepted |
 | 0010 | Idempotent Job submission | Accepted |
+| 0011 | [Worker registration and liveness](0011-worker-registration-and-liveness.md) | Accepted |
 
 See `../project-status.md` for unresolved questions, proposals, rejected directions, and deferred work.

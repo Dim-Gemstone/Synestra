@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Synestra.Application.Jobs;
+using Synestra.Application.Workers;
 
 namespace Synestra.Application.Extensions;
 
@@ -10,6 +11,9 @@ public static class DependencyInjection
         services.AddSingleton(TimeProvider.System);
         services.AddScoped<GetJob>();
         services.AddScoped<SubmitJob>();
+        services.AddSingleton<WorkerLivenessOptions>();
+        services.AddScoped<RegisterWorker>();
+        services.AddScoped<RecordWorkerHeartbeat>();
         return services;
     }
 }

@@ -29,7 +29,7 @@ This document is not a replacement for ADRs. Important accepted decisions should
 | Running cancellation is cooperative | Accepted / Not implemented | Stop at a safe point and preserve available partial results; completed external effects are not undone. Exact transitions remain open. |
 | Initial execution has no automatic retries | Accepted | Lost execution must be recorded without automatic rerun. Preserve multiple attempts and history for a separately defined retry policy. See ADR-0008. |
 | A `Lease` represents temporary execution ownership | Accepted | A worker receives a time-bounded right to execute an attempt rather than permanent ownership of a job. |
-| A Worker has finite capacity | Accepted concept | The exact meaning and accounting model of capacity are still open. |
+| A Worker has finite capacity | Accepted / Registration implemented | Capacity is a positive maximum concurrent execution-slot count. Reservation/release belongs to Slice 2B. See ADR-0011. |
 | PostgreSQL is the primary durable store | Accepted / Implemented | PostgreSQL is also expected to participate in distributed coordination. |
 | Entity Framework Core is used for persistence | Accepted / Implemented | EF Core mappings and migrations already exist. |
 | Persistence is separated from the Domain project | Accepted | EF Core and PostgreSQL concerns must remain outside the Domain project. |
@@ -54,6 +54,7 @@ This document is not a replacement for ADRs. Important accepted decisions should
 | Slice 1 submission has stable success, error, and transaction semantics | Accepted / Implemented | The thin Client API endpoint returns `201`, errors use RFC 9457 with stable codes, and definition validation plus Job insertion occur in one `READ COMMITTED` transaction with a definition-row `FOR SHARE` lock. See ADR-0007. |
 | Slice 1A Job retrieval has a stable minimal contract | Accepted / Implemented | Clients can retrieve a persisted Job by ID. The response excludes payload and internal or future execution data; missing Jobs use `job_not_found`, and successful submission identifies the resource with `Location`. See ADR-0009. |
 | Slice 1B supports opt-in idempotent submission | Accepted / Implemented | `Idempotency-Key` currently has global SubmitJob scope. PostgreSQL stores the exact request identity and original success snapshot with the Job; uniqueness and transaction advisory locks coordinate concurrent requests. Equivalent replay returns the same `201` and Location across API restarts; conflicting reuse returns `idempotency_key_conflict`. No-key submissions and GET retain their existing contracts. Keys remain at least as long as Jobs, without automatic cleanup. See ADR-0010. |
+| Slice 2A supports Worker registration and liveness | Accepted / Implemented | Worker API PUT atomically registers or replaces session, configuration and capability set. Durable accepted-session history fences replaced sessions for both delayed PUT and heartbeat; liveness persists monotonic LastSeenAtUtc. UUID v7 WorkerId is stable and SessionId changes per launch; neither authenticates the caller. Trusted/private deployment only, without authentication. Application owns READ COMMITTED transactions; PostgreSQL advisory/row locks serialize operations. A 10-second heartbeat and derived 30-second offline threshold come from focused Application options. Legacy rows can be adopted without backfill. See ADR-0011. |
 | Synestra follows a pragmatic domain-oriented architecture | Accepted direction | Domain modeling is used where useful without adopting full ceremonial DDD by default. |
 
 ---
@@ -64,10 +65,9 @@ The following ideas are considered plausible directions but are not yet binding 
 
 | Proposal | Why it remains Proposed |
 |---|---|
-| Domain methods such as `job.StartAttempt()`, `attempt.Succeed()`, `lease.Renew()`, and `worker.RecordHeartbeat()` | This matches the current domain model, but lifecycle ownership and aggregate boundaries are not yet fully defined. |
+| Domain methods such as `job.StartAttempt()`, `attempt.Succeed()`, and `lease.Renew()` | Execution lifecycle ownership and aggregate boundaries are not yet fully defined. Worker registration and RecordHeartbeat are implemented under ADR-0011. |
 | Focused application services/use cases instead of full CQRS/Mediator infrastructure | Likely sufficient for the current system, but the exact Application architecture should emerge from real use cases. |
 | PostgreSQL `FOR UPDATE SKIP LOCKED` for atomic job claiming | A strong candidate, but the final claim algorithm and transaction semantics have not been accepted yet. |
-| Worker heartbeat with offline detection | The system requires liveness tracking, but heartbeat intervals, timeout thresholds, and recovery rules are not defined. |
 | Lease renewal | The lease model strongly suggests renewal, but the protocol and failure semantics remain undefined. |
 | Retry with backoff | Retries are expected, but retry policy, timing, classification, and ownership are not yet defined. |
 | Live-process pause | Candidate for a later feature; resource, lease, and capacity semantics are undefined. Durable resume is a separate open question. |
@@ -90,8 +90,7 @@ Implementation must not silently choose semantics for them unless the relevant t
 | API consumers | Who are the intended consumers of the Synestra API? |
 | Job definitions | Who creates and manages `JobDefinition` records? |
 | Job submission | Who is allowed to submit jobs? |
-| Worker trust | Are workers trusted internal processes, authenticated external clients, or both? |
-| Worker identity | How does a worker obtain, persist, and prove its identity? |
+| Worker trust | ADR-0011 temporarily requires a trusted/private boundary without authentication. Which future authentication and authorization mechanism will prove identity and govern replacement? |
 | Worker process lifetime | Are worker agents long-lived supervisors, ephemeral single-job processes, or are both modes supported? |
 | Execution isolation | Does each attempt receive a separate process, and who owns timeout, termination, cleanup, and result collection? |
 | API deployment | Do Client API and Worker API remain one deployment or eventually become independently deployed services? |
@@ -107,12 +106,11 @@ Implementation must not silently choose semantics for them unless the relevant t
 | Pause and resume | How would live-process pause work, and is durable continuation after restart or relocation required? How would resume relate to attempts? |
 | Execution data | What are the result/artifact contracts, progress ordering, checkpoint compatibility, and technical versus business success rules? |
 | Workload inputs | How are secrets delivered, input snapshots/versioning handled, and concurrent account access constrained? |
-| Worker capacity | What does a capacity value represent: generic execution slots, browser instances, resource units, or something else? |
 | Capacity accounting | When is capacity reserved and released, and which component owns that accounting? |
 | Job status | How is `Job.Status` derived from or coordinated with `JobAttempt.Status`? |
 | Scheduling beyond Slice 1 | Slice 1 accepts only optional delayed availability. Will recurring/cron jobs, deadlines, timeouts, or other scheduling inputs ever belong to the core? |
 | Payload evolution | How are workload-specific schemas, contract versioning, and deeper security validation represented? |
-| Transaction boundaries beyond submission | Which Application operations other than SubmitJob define database transaction boundaries? |
+| Execution transaction boundaries | SubmitJob, RegisterWorker and RecordWorkerHeartbeat own transactions. What boundaries will claim, renewal and finalization require? |
 | Concurrency control | Which operations require pessimistic locking, optimistic concurrency, or both? |
 | Application persistence boundary | Should Application depend on custom persistence abstractions, or can some use cases work with more direct infrastructure-specific interfaces? |
 | Retention | How long are jobs, attempts, leases, and worker records retained? |
@@ -201,6 +199,13 @@ The exact Application-to-Persistence boundary remains subject to implementation 
 ---
 
 ## Current Product Interpretation
+
+Slices 1, 1A, 1B and 2A are implemented. Worker registration, session replacement
+and liveness now survive API restarts, alongside submission and retrieval. Slice 2
+is still incomplete. Next is Slice 2B: atomic claim, JobAttempt creation,
+session-bound Lease and capacity reservation, after accepting their exact semantics.
+The minimally useful execution product still needs a Worker agent and workload,
+lease maintenance, completion/results and reliable lost-execution recording.
 
 The current working interpretation is:
 
