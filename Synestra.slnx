@@ -19,6 +19,7 @@
     <File Path="docs/decisions/0007-submit-job-semantics.md" />
     <File Path="docs/decisions/0008-execution-unit-and-orchestration-boundary.md" />
     <File Path="docs/decisions/0009-observe-job-contract.md" />
+    <File Path="docs/decisions/0010-idempotent-job-submission.md" />
     <File Path="docs/decisions/README.md" />
   </Folder>
   <Folder Name="/orchestration/">

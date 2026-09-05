@@ -20,14 +20,16 @@ public sealed class SubmitJobTests
             TestContext.Current.CancellationToken);
 
         Assert.Equal(SubmitJobOutcome.Succeeded, result.Outcome);
-        var job = Assert.IsType<Job>(result.Job);
-        Assert.Equal(definition.Id, job.JobDefinitionId);
+        var job = Assert.IsType<JobDetails>(result.Job);
+        Assert.Equal(definition.Id, persistence.Transaction.AddedJob!.JobDefinitionId);
         Assert.Equal(definition.Type, job.Type);
         Assert.Equal(0, job.Priority);
         Assert.Equal(1, job.MaxAttempts);
         Assert.Equal(Now.UtcDateTime, job.CreatedAtUtc);
         Assert.Equal(job.CreatedAtUtc, job.AvailableAtUtc);
-        Assert.Empty(job.Attempts);
+        Assert.Empty(persistence.Transaction.AddedJob.Attempts);
+        Assert.False(persistence.Transaction.KeyLocked);
+        Assert.Null(persistence.Transaction.AddedSubmission);
         Assert.True(persistence.Transaction.Committed);
     }
 
@@ -80,6 +82,146 @@ public sealed class SubmitJobTests
         Assert.Equal(SubmitJobOutcome.InvalidRequest, past.Outcome);
     }
 
+    [Fact]
+    public async Task KeyedSubmission_CreatesJobAndStoresIdentityWithSuccess()
+    {
+        var persistence = new FakePersistence(Definition(true));
+        var request = new SubmitJobRequest("browser.capture-page", "{ \"value\": 1 }", Now.AddMinutes(1), "request-1");
+
+        var result = await new SubmitJob(persistence, new FixedTimeProvider(Now))
+            .ExecuteAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.Equal(SubmitJobOutcome.Succeeded, result.Outcome);
+        Assert.True(persistence.Transaction.KeyLocked);
+        Assert.True(persistence.Transaction.Committed);
+        Assert.Equal(result.Job, persistence.Transaction.AddedSubmission!.Job);
+        Assert.Equal(new SubmitJobIdentity(request.Type, request.Payload, request.AvailableAtUtc),
+            persistence.Transaction.AddedSubmission.Identity);
+        Assert.Equal(result.Job!.Id, persistence.Transaction.AddedJob!.Id);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Replay_ReturnsOriginalSuccessWithoutRecheckingTimeOrDefinition(bool definitionExists)
+    {
+        var original = new JobSubmission(
+            new SubmitJobIdentity("browser.capture-page", "{}", Now),
+            new JobDetails(Guid.CreateVersion7(), "browser.capture-page", JobStatus.Pending, 0, 1,
+                Now.UtcDateTime, Now.UtcDateTime));
+        var persistence = new FakePersistence(definitionExists ? Definition(false) : null, original);
+
+        var result = await new SubmitJob(persistence, new FixedTimeProvider(Now.AddDays(1))).ExecuteAsync(
+            new SubmitJobRequest(original.Identity.Type, "{}", Now, "request-1"),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(SubmitJobOutcome.Succeeded, result.Outcome);
+        Assert.Equal(original.Job, result.Job);
+        Assert.False(persistence.Transaction.DefinitionRead);
+        Assert.Null(persistence.Transaction.AddedJob);
+        Assert.Null(persistence.Transaction.AddedSubmission);
+        Assert.False(persistence.Transaction.Committed);
+    }
+
+    [Theory]
+    [InlineData("another.type", "{}", false)]
+    [InlineData("browser.capture-page", "{ }", false)]
+    [InlineData("browser.capture-page", "{\"value\":1}", false)]
+    [InlineData("browser.capture-page", "{}", true)]
+    public async Task ConflictingReplay_HasSeparateOutcome(string type, string payload, bool explicitAvailability)
+    {
+        var original = new JobSubmission(
+            new SubmitJobIdentity("browser.capture-page", "{}", null),
+            new JobDetails(Guid.CreateVersion7(), "browser.capture-page", JobStatus.Pending, 0, 1,
+                Now.UtcDateTime, Now.UtcDateTime));
+        var persistence = new FakePersistence(null, original);
+
+        var result = await new SubmitJob(persistence, new FixedTimeProvider(Now.AddDays(1))).ExecuteAsync(
+            new SubmitJobRequest(type, payload, explicitAvailability ? Now : null, "request-1"),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(SubmitJobOutcome.IdempotencyKeyConflict, result.Outcome);
+        Assert.Null(result.Job);
+        Assert.False(persistence.Transaction.DefinitionRead);
+        Assert.Null(persistence.Transaction.AddedJob);
+        Assert.False(persistence.Transaction.Committed);
+    }
+
+    [Theory]
+    [InlineData(true, SubmitJobOutcome.DefinitionDisabled)]
+    [InlineData(false, SubmitJobOutcome.DefinitionNotFound)]
+    public async Task UnusedKey_PreservesDefinitionErrors(bool definitionExists, SubmitJobOutcome outcome)
+    {
+        var persistence = new FakePersistence(definitionExists ? Definition(false) : null);
+        var result = await new SubmitJob(persistence, new FixedTimeProvider(Now)).ExecuteAsync(
+            new SubmitJobRequest("browser.capture-page", "{}", IdempotencyKey: "request-1"),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(outcome, result.Outcome);
+        Assert.Null(persistence.Transaction.AddedJob);
+        Assert.Null(persistence.Transaction.AddedSubmission);
+        Assert.False(persistence.Transaction.Committed);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(" ")]
+    [InlineData("with space")]
+    [InlineData("a,b")]
+    [InlineData("a\tb")]
+    [InlineData("a\rb")]
+    [InlineData("a\nb")]
+    [InlineData("a\0b")]
+    [InlineData("a\u007fb")]
+    [InlineData("é")]
+    public async Task InvalidKey_IsRejectedBeforePersistence(string key)
+    {
+        var persistence = new FakePersistence(Definition(true));
+        var result = await new SubmitJob(persistence, new FixedTimeProvider(Now)).ExecuteAsync(
+            new SubmitJobRequest("browser.capture-page", "{}", IdempotencyKey: key),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(SubmitJobOutcome.InvalidRequest, result.Outcome);
+        Assert.False(persistence.BeganTransaction);
+    }
+
+    [Theory]
+    [InlineData(128, SubmitJobOutcome.Succeeded)]
+    [InlineData(129, SubmitJobOutcome.InvalidRequest)]
+    public async Task KeyLength_IsBounded(int length, SubmitJobOutcome expected)
+    {
+        var result = await new SubmitJob(new FakePersistence(Definition(true)), new FixedTimeProvider(Now)).ExecuteAsync(
+            new SubmitJobRequest("browser.capture-page", "{}", IdempotencyKey: new string('a', length)),
+            TestContext.Current.CancellationToken);
+        Assert.Equal(expected, result.Outcome);
+    }
+
+    [Fact]
+    public async Task Replay_StillRejectsInvalidPayloadBeforePersistence()
+    {
+        var persistence = new FakePersistence(Definition(true));
+        var result = await new SubmitJob(persistence, new FixedTimeProvider(Now)).ExecuteAsync(
+            new SubmitJobRequest("browser.capture-page", "{\"a\":1,\"a\":2}", IdempotencyKey: "request-1"),
+            TestContext.Current.CancellationToken);
+        Assert.Equal(SubmitJobOutcome.InvalidRequest, result.Outcome);
+        Assert.False(persistence.BeganTransaction);
+    }
+
+    [Fact]
+    public async Task UnusedKey_RejectsPastAvailabilityWithoutReservingKey()
+    {
+        var persistence = new FakePersistence(Definition(true));
+        var result = await new SubmitJob(persistence, new FixedTimeProvider(Now)).ExecuteAsync(
+            new SubmitJobRequest("browser.capture-page", "{}", Now.AddTicks(-1), "request-1"),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(SubmitJobOutcome.InvalidRequest, result.Outcome);
+        Assert.True(persistence.Transaction.KeyLocked);
+        Assert.False(persistence.Transaction.DefinitionRead);
+        Assert.Null(persistence.Transaction.AddedSubmission);
+        Assert.Null(persistence.Transaction.AddedJob);
+    }
+
     private static async Task<SubmitJobResult> ExecuteAsync(JobDefinition? definition, string payload)
     {
         return await new SubmitJob(new FakePersistence(definition), new FixedTimeProvider(Now)).ExecuteAsync(
@@ -95,9 +237,9 @@ public sealed class SubmitJobTests
         public override DateTimeOffset GetUtcNow() => value;
     }
 
-    private sealed class FakePersistence(JobDefinition? definition) : ISubmitJobPersistence
+    private sealed class FakePersistence(JobDefinition? definition, JobSubmission? existing = null) : ISubmitJobPersistence
     {
-        public FakeTransaction Transaction { get; } = new(definition);
+        public FakeTransaction Transaction { get; } = new(definition) { ExistingSubmission = existing };
         public bool BeganTransaction { get; private set; }
 
         public Task<ISubmitJobTransaction> BeginTransactionAsync(CancellationToken cancellationToken)
@@ -110,14 +252,28 @@ public sealed class SubmitJobTests
 
     private sealed class FakeTransaction(JobDefinition? definition) : ISubmitJobTransaction
     {
+        public JobSubmission? ExistingSubmission { get; init; }
+        public JobSubmission? AddedSubmission { get; private set; }
+        public bool KeyLocked { get; private set; }
+        public bool DefinitionRead { get; private set; }
         public bool Committed { get; private set; }
         public Job? AddedJob { get; private set; }
 
         public Task<JobDefinition?> FindDefinitionForSubmissionAsync(string type, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            DefinitionRead = true;
             return Task.FromResult(definition);
         }
+
+        public Task<JobSubmission?> LockIdempotencyKeyAsync(string key, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            KeyLocked = true;
+            return Task.FromResult(ExistingSubmission);
+        }
+
+        public void AddSubmission(string key, JobSubmission submission) => AddedSubmission = submission;
 
         public void Add(Job job) => AddedJob = job;
 

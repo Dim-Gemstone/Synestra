@@ -1,5 +1,3 @@
-using Synestra.Domain.Jobs;
-
 namespace Synestra.Application.Jobs;
 
 public enum SubmitJobOutcome
@@ -8,7 +6,8 @@ public enum SubmitJobOutcome
     InvalidRequest,
     PayloadTooLarge,
     DefinitionNotFound,
-    DefinitionDisabled
+    DefinitionDisabled,
+    IdempotencyKeyConflict
 }
 
-public sealed record SubmitJobResult(SubmitJobOutcome Outcome, Job? Job = null, string? Error = null);
+public sealed record SubmitJobResult(SubmitJobOutcome Outcome, JobDetails? Job = null, string? Error = null);

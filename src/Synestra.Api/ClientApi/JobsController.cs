@@ -24,8 +24,20 @@ public sealed class JobsController(SubmitJob submitJob, GetJob getJob) : Control
     [HttpPost]
     [Consumes("application/json")]
     [ProducesResponseType<SubmitJobResponse>(StatusCodes.Status201Created)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> Submit(CancellationToken cancellationToken)
     {
+        string? idempotencyKey = null;
+        if (Request.Headers.TryGetValue("Idempotency-Key", out var keys))
+        {
+            if (keys.Count != 1)
+            {
+                return Problem(StatusCodes.Status400BadRequest, "invalid_request", "Exactly one idempotency key is required.");
+            }
+
+            idempotencyKey = keys[0] ?? string.Empty;
+        }
+
         ParsedSubmitJobRequest? request;
         try
         {
@@ -46,7 +58,7 @@ public sealed class JobsController(SubmitJob submitJob, GetJob getJob) : Control
         }
 
         var result = await submitJob.ExecuteAsync(
-            new SubmitJobRequest(request.Type, request.Payload, request.AvailableAtUtc),
+            new SubmitJobRequest(request.Type, request.Payload, request.AvailableAtUtc, idempotencyKey),
             cancellationToken);
 
         return result.Outcome switch
@@ -56,11 +68,12 @@ public sealed class JobsController(SubmitJob submitJob, GetJob getJob) : Control
             SubmitJobOutcome.PayloadTooLarge => Problem(StatusCodes.Status413PayloadTooLarge, "payload_too_large", result.Error),
             SubmitJobOutcome.DefinitionNotFound => Problem(StatusCodes.Status404NotFound, "job_definition_not_found"),
             SubmitJobOutcome.DefinitionDisabled => Problem(StatusCodes.Status409Conflict, "job_definition_disabled"),
+            SubmitJobOutcome.IdempotencyKeyConflict => Problem(StatusCodes.Status409Conflict, "idempotency_key_conflict"),
             _ => throw new InvalidOperationException($"Unknown submit-job outcome: {result.Outcome}.")
         };
     }
 
-    private ObjectResult Created(Synestra.Domain.Jobs.Job job)
+    private ObjectResult Created(JobDetails job)
     {
         var response = new SubmitJobResponse(
             job.Id,
@@ -94,6 +107,7 @@ public sealed class JobsController(SubmitJob submitJob, GetJob getJob) : Control
                 "payload_too_large" => "The payload is too large.",
                 "job_definition_not_found" => "The job definition was not found.",
                 "job_definition_disabled" => "The job definition is disabled.",
+                "idempotency_key_conflict" => "The idempotency key was already used for a different request.",
                 "job_not_found" => "The job was not found.",
                 _ => "The request failed."
             },
