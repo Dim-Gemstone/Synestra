@@ -2,6 +2,7 @@
   <Folder Name="/docs/">
     <File Path="docs/contributing.md" />
     <File Path="docs/domain-glossary.md" />
+    <File Path="docs/execution-scenarios.md" />
     <File Path="docs/job-lifecycle.md" />
     <File Path="docs/project-brief.md" />
     <File Path="docs/project-status.md" />
@@ -16,6 +17,7 @@
     <File Path="docs/decisions/0005-worker-communication-through-control-plane-api.md" />
     <File Path="docs/decisions/0006-job-definition-identity.md" />
     <File Path="docs/decisions/0007-submit-job-semantics.md" />
+    <File Path="docs/decisions/0008-execution-unit-and-orchestration-boundary.md" />
     <File Path="docs/decisions/README.md" />
   </Folder>
   <Folder Name="/orchestration/">

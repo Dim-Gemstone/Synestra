@@ -12,7 +12,9 @@ The system is responsible for:
 - assigning work to available workers;
 - preventing unintended concurrent execution;
 - detecting abandoned work;
-- retrying failed or abandoned work according to policy;
+- exposing stages, progress, partial results, and final results;
+- supporting cooperative cancellation;
+- eventually retrying failed or abandoned work under a separately defined policy;
 - preserving execution history.
 
 ## Initial use case
@@ -21,6 +23,14 @@ The first concrete worker implementation is expected to execute browser-based
 automation workloads.
 
 The core scheduling/execution model should not depend on browser automation.
+
+A Job can execute an entire scenario with stages, loops, and browser or API
+operations. The worker-side handler owns those internal steps. See
+`execution-scenarios.md` and ADR-0008 for the accepted scope.
+
+Progress/results and cooperative cancellation are accepted requirements, not yet
+implemented capabilities. Initial execution has no automatic retries. Pause is
+deferred; live-process pause is a candidate and durable resume remains open.
 
 ## Actors
 

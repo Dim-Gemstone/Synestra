@@ -30,6 +30,27 @@ not individual Synestra Workers.
 
 See `job-lifecycle.md` for confirmed and undecided lifecycle behavior.
 
+## Scenario execution terminology
+
+ADR-0008 accepts a Job as a complete scenario, including internal stages and
+loops. These terms describe requirements, not additional implemented entities.
+
+| Term | Meaning | Boundary |
+|---|---|---|
+| Workload handler | Worker-side implementation of a requested scenario | Owns internal steps and workload-specific resources |
+| Stage | Description of the current part of execution | Does not automatically create a Job or workflow node |
+| Progress | Counters or other indication of advancement | Does not guarantee enough state for recovery |
+| Partial result | Useful work already produced | May exist even when execution is cancelled or fails |
+| Final result | Workload-specific output associated with completed execution | Exact contract and business success rules remain open |
+| Artifact reference | Reference to a large input or output file | Storage, access, and retention contracts remain open |
+| Checkpoint | State sufficient for workload-specific continuation | Deferred; distinct from progress and partial results |
+| Live-process pause | Candidate suspension while execution state remains alive | Deferred; does not promise restart recovery |
+| Durable resume | Continuation after execution state is lost or relocated | Open; attempt identity and resource reconstruction are undecided |
+| Workflow orchestration | Durable coordination of work and its dependencies | Deferred; may later compose standalone Jobs |
+
+The initial execution path performs no automatic retries. Multiple attempts per
+Job remain part of the model for future retry policy; their history is preserved.
+
 ## Submit job terminology
 
 For Slice 1, an immediate Job has `AvailableAtUtc` equal to its server-generated
