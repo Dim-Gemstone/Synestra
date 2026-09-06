@@ -8,7 +8,7 @@ public sealed class JobAttempt
     {
     }
 
-    public JobAttempt(Guid jobId, int number, DateTime startedAtUtc)
+    internal JobAttempt(Guid jobId, int number, DateTime startedAtUtc)
     {
         if (jobId == Guid.Empty)
         {

@@ -54,4 +54,24 @@ public sealed class Job
     public DateTime AvailableAtUtc { get; private set; }
     public DateTime? CompletedAtUtc { get; private set; }
     public IReadOnlyCollection<JobAttempt> Attempts => _attempts.AsReadOnly();
+
+    public JobAttempt StartAttempt(DateTime startedAtUtc)
+    {
+        DomainValidation.Utc(startedAtUtc, nameof(startedAtUtc));
+        if (Status != JobStatus.Pending || CompletedAtUtc is not null)
+        {
+            throw new InvalidOperationException("Only a pending, incomplete Job can start an attempt.");
+        }
+
+        if (startedAtUtc < AvailableAtUtc)
+        {
+            throw new ArgumentOutOfRangeException(nameof(startedAtUtc), "An attempt cannot start before the Job is available.");
+        }
+
+        var number = _attempts.Count == 0 ? 1 : checked(_attempts.Max(attempt => attempt.Number) + 1);
+        var attempt = new JobAttempt(Id, number, startedAtUtc);
+        _attempts.Add(attempt);
+        Status = JobStatus.Running;
+        return attempt;
+    }
 }

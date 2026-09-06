@@ -117,7 +117,7 @@ Unless explicitly added later:
 - Retry/backoff model.
 - Cancellation semantics.
 - Worker trust model.
-- Exact capacity accounting.
+- Explicit capacity release and execution resource accounting beyond ADR-0012 claims.
 - Recurring jobs.
 - Payload schema/versioning.
 - Retention policy.
