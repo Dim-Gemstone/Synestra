@@ -19,7 +19,7 @@
 
 Workload execution and control remain accepted requirements without implementation.
 Claim, renewal and completion reporting are implemented below. See ADR-0008,
-ADR-0012, ADR-0013 and `execution-scenarios.md`.
+ADR-0012, ADR-0013, ADR-0014 and `execution-scenarios.md`.
 
 ## Proposed
 
@@ -27,12 +27,10 @@ Running -> Cancelled
 
 ## Undecided
 
-- Whether an expired lease marks the attempt Failed, Abandoned or Expired.
 - How a future retry policy creates a new attempt after lease expiration;
   the initial execution path does not do so automatically.
 - Who decides that retry limit has been exhausted.
 - Pending cancellation, cancellation/completion races, and unresponsive handlers.
-- Exact loss-recording transitions and their effect on Job status.
 - Pause resource/lease accounting and the relationship between resume and attempts.
 
 ## Implemented claim transition (ADR-0012, Slice 2B)
@@ -84,6 +82,41 @@ idempotency or know HTTP headers/error codes.
 Expiration alone leaves execution Running in 2C. A valid late completion can still
 be accepted before release/finalization; it never renews the Lease or restores past
 capacity. This is network-delay tolerance, not lost-execution recovery. Slice 2D
-must finalize lost execution without retry using the same Worker -> Job -> attempt
--> Lease locks; the first committed terminal transition wins. No finalizer exists yet.
+adds loss finalization below using Worker -> Job -> attempt -> Lease locks;
+the first committed terminal transition wins.
 Actual workload execution and client-visible outcome/result remain later increments.
+
+## Implemented one-execution loss transition (ADR-0014, unit 2D.1)
+
+FinalizeExpiredExecution internally accepts one LeaseId. It takes an Application-owned
+READ COMMITTED transaction, locates the execution without locks, then acquires Worker,
+Job, JobAttempt and Lease FOR UPDATE SKIP LOCKED in that order. Busy rows cause a
+skip and transaction disposal; each later invocation rechecks current persisted state.
+No current session, token or liveness eligibility is required. Offline status and
+session replacement alone do not finalize execution before expiration.
+
+After locks, relationships must still match, Job and attempt must be Running and
+incomplete without any result/error or completion ReportId/snapshot, and Lease must
+be unreleased with ExpiresAtUtc <= serverUtc. Exact expiration is eligible without
+grace. Legacy null-session/tokenless Leases may qualify; inconsistent/orphan rows
+are skipped with safe diagnostics, without inventing repair behavior.
+
+Job.AbandonAttempt validates UTC, chronology, membership and allowed state before
+mutation. It sets Job Failed and attempt Abandoned, with null Result and the error
+`execution_lease_expired` / `Execution lease expired before completion was recorded.`
+FinishedAtUtc, CompletedAtUtc and ReleasedAtUtc all use the same actual server
+decision time after locks, truncated to microseconds. Acquisition, start and
+expiration are preserved. No ReportId or completion snapshot is invented. All
+three rows commit together; rollback clears tracking even after a successful save
+followed by commit failure. Repeated finalization does not write terminal rows again.
+
+Completion first preserves its replay snapshot. Finalization first yields
+`attempt_already_finalized` for ownership-valid completion and `lease_not_active`
+for renewal, with all earlier ADR-0013 session/ownership errors unchanged. Renewal
+first makes the finalizer check its current expiration. Worker liveness/history and
+new claims are unaffected. Expired ownership already ceased to count toward capacity.
+
+This records loss without retry, Worker termination or certainty about external
+effects. No new attempt/Lease is created and no Job returns to Pending. Discovery
+and automatic hosted invocation are absent, so eventual finalization is not yet
+implemented. Slice 2D and Slice 2 remain incomplete.

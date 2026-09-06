@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Synestra.Application.Executions;
 using Synestra.Application.Jobs;
 using Synestra.Application.Workers;
 
@@ -18,6 +19,7 @@ public static class DependencyInjection
         services.AddScoped<ClaimWork>();
         services.AddScoped<RenewLease>();
         services.AddScoped<ReportExecutionCompletion>();
+        services.AddScoped<FinalizeExpiredExecution>();
         return services;
     }
 }

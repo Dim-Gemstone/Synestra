@@ -63,6 +63,15 @@ public sealed class JobAttempt
         FinishedAtUtc = finishedAtUtc;
     }
 
+    internal void Abandon(DateTime finishedAtUtc)
+    {
+        ValidateCompletion(finishedAtUtc);
+        ErrorCode = "execution_lease_expired";
+        ErrorMessage = "Execution lease expired before completion was recorded.";
+        Status = JobAttemptStatus.Abandoned;
+        FinishedAtUtc = finishedAtUtc;
+    }
+
     private void ValidateCompletion(DateTime finishedAtUtc)
     {
         DomainValidation.Utc(finishedAtUtc, nameof(finishedAtUtc));

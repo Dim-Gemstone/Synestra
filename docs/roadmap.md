@@ -3,6 +3,8 @@
 Slices 1, 1A, 1B, 2A, 2B, and 2C are implemented. Slice 2 remains incomplete.
 ADR-0011 defines registration/liveness and ADR-0012 defines atomic claim and
 execution ownership; ADR-0013 defines token fencing, renewal and completion reports.
+ADR-0014 defines loss finalization; its atomic single-execution path is implemented,
+but Slice 2D remains incomplete without discovery and automatic invocation.
 ADR-0008 accepts the execution direction and
 the requirements illustrated in `execution-scenarios.md`. The later slices below are
 a proposed delivery sequence, not implemented features or approval of their open
@@ -114,8 +116,8 @@ Decisions required before implementation:
   Pending -> Running transition, initial Lease duration and claim transaction are
   resolved by ADR-0012; ADR-0013 resolves completion slot release and renewal;
   the execution resource boundary remains open;
-- loss detection and finalization without automatic rerun, using ADR-0013's lock
-  order and first-committed terminal transition rule;
+- loss detection and finalization without automatic rerun are resolved by ADR-0014,
+  preserving ADR-0013's lock order and first-committed terminal transition rule;
 - client-visible outcome/result contract; ADR-0013 resolves Worker result/error
   limits, durable replay and late completion before finalization.
 
@@ -200,15 +202,21 @@ workloads still do not execute and lost-execution finalization remains absent.
 
 Late completion is accepted after expiration only while execution remains Running
 and unreleased with valid ownership. This is not lost-execution recovery. No Worker
-executable, actual workload execution, client-visible outcome/result expansion or
-lost-execution finalizer is implemented. The whole Slice 2 remains incomplete.
+executable, actual workload execution or client-visible outcome/result expansion
+is implemented. The whole Slice 2 remains incomplete.
 
-### Slice 2D — Lost-execution finalization (next)
+### Slice 2D — Lost-execution finalization (incomplete)
 
-Define the terminal loss state and detection eligibility, then finalize abandoned
-execution without automatic retry. Use ADR-0013's row locks and first-committed
-terminal transition rule for races with completion. Guarantee eventual recording
-of lost execution; expiration freeing capacity alone is insufficient.
+ADR-0014 defines terminal loss, exact expiration eligibility, nonblocking ordered
+row locks and the first-committed terminal transition rule. Internal finalization
+of one expired Lease is implemented: Job becomes Failed, attempt becomes Abandoned,
+and the Lease is released atomically without retry or a synthetic Worker report.
+Domain, Application, PostgreSQL concurrency/rollback/legacy and API regression
+tests cover that path.
+
+Bounded discovery and automatic hosted invocation remain absent. Eventual recording
+of loss is therefore not yet implemented; expiration freeing capacity alone is
+insufficient. Complete that server path before marking Slice 2D implemented.
 
 ### Slice 2E — Minimal Worker and bounded test workload (proposed)
 
@@ -260,10 +268,10 @@ Keep Job and JobAttempt distinct; do not add a permanent one-attempt-per-Job
 constraint or speculative retry/workflow tables.
 
 Currently submission, opt-in idempotent replay, retrieval by ID, Worker
-registration/liveness, atomic claim, renewal and idempotent execution reporting
-are implemented. Actual workload execution, client-visible terminal outcome/result,
-lost-execution finalization and control are not.
-The next increment is Slice 2D, followed by 2E and 2F as described above.
+registration/liveness, atomic claim, renewal, idempotent execution reporting and
+internal finalization of one expired execution are implemented. Automatic loss
+finalization, actual workload execution, client-visible terminal outcome/result
+and control are not. Complete Slice 2D next, followed by 2E and 2F as described above.
 A minimally useful execution product still needs Worker execution, reliable ownership/loss handling,
 client-visible outcomes, and a concrete workload. Long-running scenario control
 follows in Slice 3; automatic retries, pause, and Workflow are not prerequisites

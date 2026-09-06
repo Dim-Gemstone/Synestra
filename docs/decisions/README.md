@@ -28,5 +28,6 @@ Deferred ideas that have not yet required an architectural decision should norma
 | 0011 | [Worker registration and liveness](0011-worker-registration-and-liveness.md) | Accepted |
 | 0012 | [Atomic Job claim and execution ownership](0012-atomic-job-claim.md) | Accepted |
 | 0013 | [Lease renewal and execution reporting](0013-lease-renewal-and-execution-reporting.md) | Accepted |
+| 0014 | [Lost-execution finalization without retry](0014-lost-execution-finalization.md) | Accepted |
 
 See `../project-status.md` for unresolved questions, proposals, rejected directions, and deferred work.

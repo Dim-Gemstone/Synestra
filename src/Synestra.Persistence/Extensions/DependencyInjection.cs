@@ -1,7 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Synestra.Application.Executions;
 using Synestra.Application.Jobs;
 using Synestra.Application.Workers;
+using Synestra.Persistence.Executions;
 using Synestra.Persistence.Jobs;
 using Synestra.Persistence.Workers;
 
@@ -18,6 +20,7 @@ public static class DependencyInjection
         s.AddScoped<IClaimWorkPersistence, ClaimWorkPersistence>();
         s.AddScoped<IRenewLeasePersistence, RenewLeasePersistence>();
         s.AddScoped<IReportExecutionCompletionPersistence, ReportExecutionCompletionPersistence>();
+        s.AddScoped<IFinalizeExpiredExecutionPersistence, FinalizeExpiredExecutionPersistence>();
         return s;
     }
 }

@@ -58,6 +58,7 @@ This document is not a replacement for ADRs. Important accepted decisions should
 | Synestra follows a pragmatic domain-oriented architecture | Accepted direction | Domain modeling is used where useful without adopting full ceremonial DDD by default. |
 | Slice 2B supports atomic claim and durable ownership | Accepted / Implemented | Current online Worker sessions claim one available, exactly supported Pending Job through the Worker API. Application owns READ COMMITTED; Worker FOR UPDATE protects capacity and session state, then Job FOR UPDATE SKIP LOCKED applies priority/availability/creation/UUID ordering. Job.StartAttempt creates a Running attempt and a session-bound Lease atomically with Pending -> Running. Default duration is 30 seconds; claim never changes liveness. Expired leases stop consuming slots without finalization or retry. API returns the original eight execution fields plus ADR-0013 leaseToken after commit, identical 204 for no work/capacity and stable Problem Details. PostgreSQL and API concurrency/restart tests cover the path. Legacy null-session leases are preserved, with checks/FKs for non-null bindings. See ADR-0012. |
 | Slice 2C supports Lease renewal and execution reporting | Accepted / Implemented | ADR-0013 adds per-Lease random token/hash fencing, monotonic renewal independent of heartbeat, strict success/failure reports and durable ReportId replay. Job coordinates terminal Job/attempt state and matching finish/release times; PostgreSQL transactions commit snapshot and capacity release together. Ordered row locks and rollback cleanup protect races and scope reuse. Legacy tokenless leases remain fenced; Client GetJob is unchanged. |
+| Slice 2D records lost execution without retry | Accepted / Partially implemented | ADR-0014 defines the full contract. Unit 2D.1 finalizes one expired, consistent execution internally: attempt Abandoned, Job Failed, matching finish/completion/release time and fixed expiry error, without a Worker report. Ordered nonblocking locks, revalidation and rollback cleanup protect concurrency and replay. Legacy sessions/tokens are supported. No discovery or hosted invocation exists, so automatic eventual finalization and Slice 2D remain incomplete. |
 
 ---
 
@@ -96,8 +97,6 @@ Implementation must not silently choose semantics for them unless the relevant t
 | Work delivery | Does a worker poll, long-poll, stream, receive push notifications, or consume broker notifications before claiming work? |
 | Delivery guarantee | Is execution explicitly at-least-once, or does Synestra provide another guarantee? |
 | Duplicate execution | Under which failure scenarios can the same logical job execute more than once? |
-| Lease expiration | What state does an attempt enter when its lease expires? |
-| Lost-execution finalization | ADR-0013 accepts late completion only while Running/unreleased with valid ownership; what loss state and detection eligibility will Slice 2D use? |
 | Retry creation | Claim creates an attempt for a Pending Job under ADR-0012. How will a future retry policy make a failed/lost Job eligible again? |
 | Retry policy | How are maximum attempts, backoff, and recoverable/non-recoverable failures defined? |
 | Cancellation | Given cooperative running cancellation, what are the exact transitions, Pending behavior, completion races, and unresponsive-handler rules? |
@@ -105,10 +104,9 @@ Implementation must not silently choose semantics for them unless the relevant t
 | Execution data | ADR-0013 defines Worker completion data. What are the client-visible outcome/result, artifacts, progress, checkpoint and business success contracts? |
 | Workload inputs | How are secrets delivered, input snapshots/versioning handled, and concurrent account access constrained? |
 | Capacity accounting | Claim reserves and completion releases slots under ADR-0012/0013. What execution resource and future control rules will apply? |
-| Job status | Job coordinates claim and reported success/failure with its attempt. What terminal state will loss finalization record? |
 | Scheduling beyond Slice 1 | Slice 1 accepts only optional delayed availability. Will recurring/cron jobs, deadlines, timeouts, or other scheduling inputs ever belong to the core? |
 | Payload evolution | How are workload-specific schemas, contract versioning, and deeper security validation represented? |
-| Execution transaction boundaries | SubmitJob, registration, heartbeat, claim, renewal and reporting own transactions. Slice 2D must follow ADR-0013's Worker -> Job -> attempt -> Lease lock order; its detection/batching policy remains open. |
+| Execution transaction boundaries | Existing use cases own focused transactions; ADR-0014 adds nonblocking Worker -> Job -> attempt -> Lease finalization. Which future use cases will need other transaction contracts? |
 | Concurrency control | Which operations require pessimistic locking, optimistic concurrency, or both? |
 | Application persistence boundary | Should Application depend on custom persistence abstractions, or can some use cases work with more direct infrastructure-specific interfaces? |
 | Retention | How long are jobs, attempts, leases, and worker records retained? |
@@ -202,9 +200,12 @@ Slices 1, 1A, 1B, 2A, 2B and 2C are implemented. Worker registration, liveness,
 claim, token-fenced renewal and idempotent execution reporting survive API restarts.
 Reported success/failure atomically finalizes Job/attempt, persists a small result
 or error, and releases Lease capacity. Late completion before finalization is
-accepted; this is not lost-execution recovery. Slice 2 remains incomplete.
+accepted. Unit 2D.1 adds internal, atomic loss finalization for one expired Lease,
+including legacy ownership, concurrency and rollback behavior. It does not run
+automatically. Slice 2D and Slice 2 remain incomplete.
 
-Next is Slice 2D: guaranteed lost-execution finalization without automatic retry.
+Next within Slice 2D is bounded discovery/sweep (2D.2), then hosted invocation (2D.3)
+to provide eventual lost-execution finalization without automatic retry under ADR-0014.
 Slice 2E adds a minimal Worker and bounded workload; Slice 2F adds client-visible
 terminal outcome/result. No Worker executable, actual workload execution or Client
 API outcome/result expansion exists yet. A minimally useful execution product still

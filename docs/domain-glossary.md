@@ -7,9 +7,9 @@ decided.
 | Term | Meaning | Not | Confirmed semantics | Still undecided |
 |---|---|---|---|---|
 | `JobDefinition` | Registered type of executable work | A submitted execution instance | Has a stable UUID identity and a unique immutable machine-readable type; disabling blocks new submissions but does not affect existing jobs | Who manages definitions |
-| `Job` | One logical unit of submitted work | One physical execution | References its definition by ID, snapshots its type and preserves attempt history; StartAttempt owns Pending -> Running, and SucceedAttempt/FailAttempt coordinate terminal Job/attempt state under ADR-0013 | Lost-execution finalization, cancellation and retry semantics |
-| `JobAttempt` | One execution try for a Job | The retry policy itself | Created Running during claim with max(history) + 1; completion stores success result or failure error and a finish time matching Job completion | State chosen by the future lost-execution finalizer |
-| `Lease` | Time-bounded exclusive right for a Worker session to execute an attempt | A permanent lock or execution result; LeaseId is not a credential | Worker/session-bound, renewable before expiration, released atomically on completion; one unreleased/unexpired Lease consumes a slot | Lost-execution finalization and any future standalone release protocol |
+| `Job` | One logical unit of submitted work | One physical execution | References its definition by ID, snapshots its type and preserves attempt history; StartAttempt owns Pending -> Running, SucceedAttempt/FailAttempt coordinate Worker completion, and AbandonAttempt records loss as Failed under ADR-0014 | Cancellation and retry semantics |
+| `JobAttempt` | One execution try for a Job | The retry policy itself | Created Running during claim with max(history) + 1; completion stores success result or failure error; loss records Abandoned with an expiry error and a finish time matching Job completion | Future retry and cancellation transitions |
+| `Lease` | Time-bounded exclusive right for a Worker session to execute an attempt | A permanent lock or execution result; LeaseId is not a credential | Worker/session-bound, renewable before expiration, released atomically on completion or loss finalization; one unreleased/unexpired Lease consumes a slot | Any future standalone release protocol |
 | `Worker` | Registered worker agent with identity, liveness and finite capacity | An OS thread, HTTP request, browser instance or individual CEF subprocess | Stable UUID v7 identity and replaceable process session; exact supported types; positive capacity; only registration/heartbeat confirm liveness | Future authentication and execution process lifetime/isolation |
 
 ## Working execution terminology
@@ -45,7 +45,8 @@ JobDefinition existence or enabled state. Capacity is the maximum concurrent
 execution-slot count; active Leases reserve slots under ADR-0012. Registration is also
 liveness confirmation. LastSeenAtUtc never moves backwards; offline is derived at
 30 seconds since last seen, with a recommended heartbeat every 10 seconds. There
-is no persisted online flag, monitor, Worker read endpoint or loss recovery yet.
+is no persisted online flag, monitor or Worker read endpoint. Internal loss
+finalization below does not use offline status as eligibility.
 
 ## Atomic claim terminology
 
@@ -79,8 +80,23 @@ Completion atomically finalizes Job/attempt, persists a small success result or
 failure error, and releases Lease capacity. Result is an object up to 64 KiB in
 received UTF-8, depth 32, without duplicate names; workload-specific validation is
 absent. Late completion while Running/unreleased may be accepted after expiration,
-without renewing ownership. It is not lost-execution recovery. The next Slice 2D
-finalizer and eventual client-visible outcome/result remain unimplemented.
+without renewing ownership. It is not lost-execution recovery. Client-visible
+outcome/result remains unimplemented.
+
+## Lost-execution terminology
+
+ADR-0014 defines Slice 2D. Unit 2D.1 implements only internal finalization of one
+expired Lease. The Job becomes Failed, its Running attempt becomes Abandoned,
+and the Lease is released with matching decision timestamps and the fixed
+`execution_lease_expired` error. There is no synthetic Worker report or result.
+Exact expiration is eligible; no grace period, offline requirement or current
+session/token check applies. Old-session and legacy tokenless Leases can qualify.
+Inconsistent relationships are skipped without repair. Completion and loss share
+ordered locks; the first committed terminal transition wins without overwriting
+Worker completion replay. No attempt is retried, and external effects remain uncertain.
+
+There is no discovery sweep or hosted finalizer yet. Automatic eventual loss
+recording is therefore not implemented; Slice 2D and Slice 2 remain incomplete.
 
 ## Scenario execution terminology
 
