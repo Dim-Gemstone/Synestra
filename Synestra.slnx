@@ -2,6 +2,7 @@
   <Folder Name="/docs/">
     <File Path="docs/contributing.md" />
     <File Path="docs/domain-glossary.md" />
+    <File Path="docs/execution-workflow.md" />
     <File Path="docs/execution-scenarios.md" />
     <File Path="docs/job-lifecycle.md" />
     <File Path="docs/project-brief.md" />
