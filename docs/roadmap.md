@@ -1,7 +1,8 @@
 # Roadmap
 
-Slices 1, 1A, 1B, and 2A are implemented. Slice 2 remains incomplete.
-ADR-0011 defines registration and liveness. ADR-0008 accepts the execution direction and
+Slices 1, 1A, 1B, 2A, and 2B are implemented. Slice 2 remains incomplete.
+ADR-0011 defines registration/liveness and ADR-0012 defines atomic claim and
+execution ownership. ADR-0008 accepts the execution direction and
 the requirements illustrated in `execution-scenarios.md`. The later slices below are
 a proposed delivery sequence, not implemented features or approval of their open
 protocol decisions. Resolve the listed decisions before implementing each slice.
@@ -108,10 +109,10 @@ and a small workload-specific result. Automatic retries and pause are excluded.
 Decisions required before implementation:
 
 - Worker identity/trust, registration, heartbeat, capabilities and capacity meaning
-  are resolved by ADR-0011; capacity reservation/release, claim eligibility and
-  execution resource boundary still require decisions;
-- atomic claim algorithm and transaction boundaries, availability ordering,
-  Job/attempt transitions, lease duration/maintenance, and loss detection;
+  are resolved by ADR-0011; claim eligibility, ordering, capacity reservation,
+  Pending -> Running transition, initial Lease duration and claim transaction are
+  resolved by ADR-0012; release and execution resource boundary remain open;
+- lease maintenance and loss detection;
 - lost-execution finalization without automatic rerun, late reports, duplicate
   completion requests, and completion/expiration races;
 - result/error contracts, limits, and rules for selecting the current Job outcome.
@@ -151,13 +152,38 @@ work. It does not require a general Workflow engine or full CEF scenario runtime
 No Jobs execute, attempts or leases are created, or capacity is reserved in 2A.
 There is no Worker executable, read/list endpoint, background monitor or recovery.
 
-### Slice 2B — Atomic claim and execution ownership (next)
+### Slice 2B — Atomic claim and execution ownership (implemented)
 
-Decide and implement atomic claim, JobAttempt creation, session-bound Lease and
-capacity reservation. Future claim/Lease operations must consider both WorkerId
-and SessionId. Ordering, eligibility, transitions, lease duration and transaction
-semantics still require an accepted decision. Renewal, execution, completion/results
-and lost-execution recording remain further increments before Slice 2 is complete.
+- ADR-0012 defines the Worker claims endpoint, current-session and online
+  eligibility, deterministic ordering, execution slots and session-bound Lease;
+- one Application-owned READ COMMITTED transaction locks Worker, counts active
+  Leases and selects a Pending, available, exactly supported Job with FOR UPDATE
+  SKIP LOCKED, ordered by descending Priority then ascending availability,
+  creation and native UUID;
+- Job.StartAttempt transitions Pending -> Running and creates one Running attempt
+  numbered from complete history; the same transaction inserts its Lease with
+  current WorkerId/SessionId, a server acquisition time and default 30-second duration;
+- one unreleased, unexpired Lease occupies a slot across all Worker sessions;
+  capacity changes do not remove ownership, and expired leases cease to count
+  without finalizing or retrying their Job/attempt;
+- the thin Worker endpoint returns the eight-field 200 only after commit, or
+  identical empty 204 for no eligible work and exhausted capacity, with stable
+  validation, session, missing-Worker and offline Problem Details;
+- migration preserves legacy null-session leases and constrains non-null session
+  format and its relationship to accepted Worker session history;
+- Domain, Application, PostgreSQL concurrency/rollback/constraint and API restart
+  and multi-instance tests cover ownership, fencing and capacity.
+
+This creates durable ownership only. Workloads do not execute, and there is no
+renewal, completion/failure reporting, result or lost-execution finalization yet.
+
+### Slice 2C — Lease renewal and execution reporting contract (next)
+
+Define current-session and lease-token fencing, renewal, idempotent success/failure
+reports, a small result contract and completion races before implementation.
+Lost-execution finalization can remain a separate Slice 2D. Worker executable,
+workload execution and client-visible outcome still need delivery before the
+whole Slice 2 is complete. Neither Slice 2C nor 2D is implemented.
 
 ## Slice 3 — Observe and cancel a long-running scenario (proposed)
 
@@ -195,9 +221,10 @@ and control requests. Checkpoints and workflow state remain conditional on later
 Keep Job and JobAttempt distinct; do not add a permanent one-attempt-per-Job
 constraint or speculative retry/workflow tables.
 
-Currently submission, opt-in idempotent replay, retrieval by ID, and Worker
-registration/liveness are implemented; execution, results, and control are not.
-The next increment is Slice 2B, starting with its required protocol decisions.
+Currently submission, opt-in idempotent replay, retrieval by ID, Worker
+registration/liveness and atomic claim with durable execution ownership are
+implemented; workload execution, results, and control are not.
+The next increment is Slice 2C, starting with its required protocol decisions.
 A minimally useful execution product still needs Worker execution, reliable ownership/loss handling,
 client-visible outcomes, and a concrete workload. Long-running scenario control
 follows in Slice 3; automatic retries, pause, and Workflow are not prerequisites

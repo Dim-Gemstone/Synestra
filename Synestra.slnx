@@ -21,6 +21,7 @@
     <File Path="docs/decisions/0009-observe-job-contract.md" />
     <File Path="docs/decisions/0010-idempotent-job-submission.md" />
     <File Path="docs/decisions/0011-worker-registration-and-liveness.md" />
+    <File Path="docs/decisions/0012-atomic-job-claim.md" />
     <File Path="docs/decisions/README.md" />
   </Folder>
   <Folder Name="/orchestration/">

@@ -7,10 +7,10 @@ decided.
 | Term | Meaning | Not | Confirmed semantics | Still undecided |
 |---|---|---|---|---|
 | `JobDefinition` | Registered type of executable work | A submitted execution instance | Has a stable UUID identity and a unique immutable machine-readable type; disabling blocks new submissions but does not affect existing jobs | Who manages definitions |
-| `Job` | One logical unit of submitted work | One physical execution | References its `JobDefinition` by ID, snapshots its type, can have multiple attempts and preserves their history; submission uses server-owned UUID v7 identity and UTC creation time | Exact status derivation, cancellation and retry semantics beyond Slice 1 |
-| `JobAttempt` | One execution try for a Job | The retry policy itself | Belongs to one Job and records one execution outcome | Exact creation point and state after lease expiration |
-| `Lease` | Time-bounded exclusive right for a Worker to execute an attempt | A permanent lock or execution result | Has acquisition and expiration times and cannot permanently assign work | Renewal, expiration recovery and late-result behavior |
-| `Worker` | Registered worker agent with identity, liveness and finite capacity | An OS thread, HTTP request, browser instance or individual CEF subprocess | Agent-persisted UUID v7 identity, replaceable UUID v7 process session, supported type set and execution-slot limit; registration and heartbeat persist liveness under ADR-0011 | Future authentication, process lifetime and capacity reservation/release |
+| `Job` | One logical unit of submitted work | One physical execution | References its definition by ID, snapshots its type, preserves attempt history and uses server-owned UUID v7 identity and UTC creation time; atomic claim transitions Pending -> Running through StartAttempt under ADR-0012 | Completion/status derivation, cancellation and retry semantics |
+| `JobAttempt` | One execution try for a Job | The retry policy itself | Created Running by Job during atomic claim, with number max(history) + 1 and start time equal to Lease acquisition | Completion outcome and state after lease expiration |
+| `Lease` | Time-bounded exclusive right for a Worker session to execute an attempt | A permanent lock, credential or execution result | Claim persists WorkerId and current SessionId, acquisition and expiration; one unreleased, unexpired Lease reserves one slot | Renewal, explicit release, expiration recovery and late-result behavior |
+| `Worker` | Registered worker agent with identity, liveness and finite capacity | An OS thread, HTTP request, browser instance or individual CEF subprocess | Stable UUID v7 identity, replaceable UUID v7 process session, exact supported types and positive execution-slot limit; ADR-0011 liveness and ADR-0012 atomic claim | Future authentication, process lifetime and release/reporting protocol |
 
 ## Working execution terminology
 
@@ -42,10 +42,25 @@ continues to update desired state.
 
 Supported types are a full, ordinal case-sensitive capability set independent of
 JobDefinition existence or enabled state. Capacity is the maximum concurrent
-execution-slot count; slots are not yet reserved or released. Registration is also
+execution-slot count; active Leases reserve slots under ADR-0012. Registration is also
 liveness confirmation. LastSeenAtUtc never moves backwards; offline is derived at
 30 seconds since last seen, with a recommended heartbeat every 10 seconds. There
 is no persisted online flag, monitor, Worker read endpoint or loss recovery yet.
+
+## Atomic claim terminology
+
+ADR-0012 implements Slice 2B: a current, online Worker session claims one Pending
+Job available at server UTC with an exactly supported type. Priority descends;
+availability, creation and PostgreSQL UUID order ascend. Locked candidates are
+skipped. Job transition, Running attempt creation and session-bound Lease insertion
+commit together before returning execution input. Claim does not confirm liveness.
+
+An active Lease has ReleasedAtUtc null and ExpiresAtUtc strictly later than server
+UTC. Count all sessions of a Worker, including legacy null-session leases. Exact
+expiration frees the slot without finalizing the Running attempt or creating a
+retry. Reducing capacity or replacing the session never deletes existing leases.
+New leases require UUID v7 session binding; nullable schema preserves legacy rows.
+Ownership is durable, but workload execution and reporting are still unimplemented.
 
 ## Scenario execution terminology
 

@@ -14,6 +14,8 @@ public static class DependencyInjection
         services.AddSingleton<WorkerLivenessOptions>();
         services.AddScoped<RegisterWorker>();
         services.AddScoped<RecordWorkerHeartbeat>();
+        services.AddSingleton<ClaimWorkOptions>();
+        services.AddScoped<ClaimWork>();
         return services;
     }
 }

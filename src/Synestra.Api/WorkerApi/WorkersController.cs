@@ -6,7 +6,7 @@ namespace Synestra.Api.WorkerApi;
 
 [ApiController]
 [Route("api/worker/workers/{workerId}")]
-public sealed class WorkersController(RegisterWorker registerWorker, RecordWorkerHeartbeat recordHeartbeat) : ControllerBase
+public sealed class WorkersController(RegisterWorker registerWorker, RecordWorkerHeartbeat recordHeartbeat, ClaimWork claimWork) : ControllerBase
 {
     [HttpPut("registration")]
     [ProducesResponseType<WorkerDetails>(StatusCodes.Status200OK)]
@@ -68,6 +68,42 @@ public sealed class WorkersController(RegisterWorker registerWorker, RecordWorke
         };
     }
 
+    [HttpPost("claims")]
+    [ProducesResponseType<ClaimWorkResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> Claim(string workerId, CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(workerId, out var id)
+            || !Request.Headers.TryGetValue("Worker-Session-Id", out var sessions)
+            || sessions.Count != 1 || !Guid.TryParse(sessions[0], out var sessionId))
+        {
+            return Error(400, "invalid_request");
+        }
+
+        var result = await claimWork.ExecuteAsync(id, sessionId, cancellationToken);
+        if (result.Outcome == ClaimWorkOutcome.Succeeded)
+        {
+            var work = result.Work!;
+            using var payload = JsonDocument.Parse(work.Payload);
+            return Ok(new ClaimWorkResponse(work.JobId, work.AttemptId, work.LeaseId, work.AttemptNumber,
+                work.Type, payload.RootElement.Clone(), work.AcquiredAtUtc, work.ExpiresAtUtc));
+        }
+
+        return result.Outcome switch
+        {
+            ClaimWorkOutcome.NoWork => NoContent(),
+            ClaimWorkOutcome.InvalidRequest => Error(400, "invalid_request"),
+            ClaimWorkOutcome.WorkerNotFound => Error(404, "worker_not_found"),
+            ClaimWorkOutcome.SessionReplaced => Error(409, "worker_session_replaced"),
+            ClaimWorkOutcome.WorkerOffline => Error(409, "worker_offline"),
+            _ => throw new InvalidOperationException($"Unknown claim outcome: {result.Outcome}.")
+        };
+    }
+
     private ObjectResult Error(int status, string code, string? detail = null)
     {
         var problem = new ProblemDetails
@@ -79,6 +115,7 @@ public sealed class WorkersController(RegisterWorker registerWorker, RecordWorke
                 "invalid_request" => "The request is invalid.",
                 "worker_not_found" => "The worker was not found.",
                 "worker_session_replaced" => "The worker session was replaced.",
+                "worker_offline" => "The worker is offline.",
                 _ => "The request failed."
             },
             Detail = detail
