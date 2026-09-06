@@ -451,7 +451,7 @@ public sealed class ClaimWorkPersistenceTests(PostgreSqlFixture postgres) : IAsy
         var job = (await transaction.LockEligibleJobAsync(worker.WorkerId, Now.UtcDateTime, Token))!;
         var attempt = job.StartAttempt(Now.UtcDateTime);
         var lease = new Lease(attempt.Id, worker.WorkerId, worker.SessionId, Now.UtcDateTime, TimeSpan.FromSeconds(30));
-        transaction.Add(attempt, lease);
+        transaction.Add(attempt, lease, LeaseToken.Hash(LeaseToken.Generate())!);
         return lease;
     }
 

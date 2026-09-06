@@ -77,7 +77,7 @@ public sealed class WorkersController(RegisterWorker registerWorker, RecordWorke
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> Claim(string workerId, CancellationToken cancellationToken)
     {
-        if (!Guid.TryParse(workerId, out var id)
+        if (Request.Headers.ContainsKey("Lease-Token") || !Guid.TryParse(workerId, out var id)
             || !Request.Headers.TryGetValue("Worker-Session-Id", out var sessions)
             || sessions.Count != 1 || !Guid.TryParse(sessions[0], out var sessionId))
         {
@@ -89,7 +89,7 @@ public sealed class WorkersController(RegisterWorker registerWorker, RecordWorke
         {
             var work = result.Work!;
             using var payload = JsonDocument.Parse(work.Payload);
-            return Ok(new ClaimWorkResponse(work.JobId, work.AttemptId, work.LeaseId, work.AttemptNumber,
+            return Ok(new ClaimWorkResponse(work.JobId, work.AttemptId, work.LeaseId, work.LeaseToken, work.AttemptNumber,
                 work.Type, payload.RootElement.Clone(), work.AcquiredAtUtc, work.ExpiresAtUtc));
         }
 

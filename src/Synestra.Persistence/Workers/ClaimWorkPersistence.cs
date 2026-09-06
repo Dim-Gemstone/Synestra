@@ -51,11 +51,12 @@ internal sealed class ClaimWorkPersistence(SynestraDbContext dbContext) : IClaim
             return _job;
         }
 
-        public void Add(JobAttempt attempt, Lease lease)
+        public void Add(JobAttempt attempt, Lease lease, byte[] tokenHash)
         {
             _lease = lease;
             dbContext.JobAttempts.Add(attempt);
             dbContext.Leases.Add(lease);
+            dbContext.Entry(lease).Property<byte[]>("TokenHash").CurrentValue = tokenHash;
         }
 
         public async Task CommitAsync(CancellationToken cancellationToken)

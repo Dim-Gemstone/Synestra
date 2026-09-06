@@ -16,6 +16,8 @@ public static class DependencyInjection
         services.AddScoped<RecordWorkerHeartbeat>();
         services.AddSingleton<ClaimWorkOptions>();
         services.AddScoped<ClaimWork>();
+        services.AddScoped<RenewLease>();
+        services.AddScoped<ReportExecutionCompletion>();
         return services;
     }
 }

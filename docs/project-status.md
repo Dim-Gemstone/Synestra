@@ -25,11 +25,11 @@ This document is not a replacement for ADRs. Important accepted decisions should
 | `JobDefinition → Job → JobAttempt → Lease → Worker` are the core domain concepts | Accepted / Implemented | These concepts already form the current domain model. |
 | A `Job` can have multiple `JobAttempt` instances | Accepted / Model implemented | Attempt history supports future retries; automatic retries are not implemented and are deferred by ADR-0008. Resume/attempt semantics remain open. |
 | A Job can execute a complete scenario | Accepted / Not implemented | Worker-side handlers own internal stages, loops, and browser/API operations. See ADR-0008. |
-| Execution exposes progress and results | Accepted / Not implemented | Current stage, counters, partial and final results are required; large files use artifact references. Detailed contracts remain open. |
+| Execution exposes progress and results | Accepted / Worker completion reporting implemented | ADR-0013 persists a bounded success result or failure error. Client-visible outcome/result, progress, partial results and artifacts remain unimplemented. |
 | Running cancellation is cooperative | Accepted / Not implemented | Stop at a safe point and preserve available partial results; completed external effects are not undone. Exact transitions remain open. |
 | Initial execution has no automatic retries | Accepted | Lost execution must be recorded without automatic rerun. Preserve multiple attempts and history for a separately defined retry policy. See ADR-0008. |
 | A `Lease` represents temporary execution ownership | Accepted | A worker receives a time-bounded right to execute an attempt rather than permanent ownership of a job. |
-| A Worker has finite capacity | Accepted / Reservation implemented | Capacity is a positive maximum concurrent execution-slot count. Each unreleased, unexpired Lease reserves one slot across all sessions under ADR-0012; explicit release remains unimplemented. |
+| A Worker has finite capacity | Accepted / Reservation and completion release implemented | Each unreleased, unexpired Lease reserves one slot across all sessions under ADR-0012; ADR-0013 completion releases it atomically. No standalone release endpoint exists. |
 | PostgreSQL is the primary durable store | Accepted / Implemented | PostgreSQL is also expected to participate in distributed coordination. |
 | Entity Framework Core is used for persistence | Accepted / Implemented | EF Core mappings and migrations already exist. |
 | Persistence is separated from the Domain project | Accepted | EF Core and PostgreSQL concerns must remain outside the Domain project. |
@@ -56,7 +56,8 @@ This document is not a replacement for ADRs. Important accepted decisions should
 | Slice 1B supports opt-in idempotent submission | Accepted / Implemented | `Idempotency-Key` currently has global SubmitJob scope. PostgreSQL stores the exact request identity and original success snapshot with the Job; uniqueness and transaction advisory locks coordinate concurrent requests. Equivalent replay returns the same `201` and Location across API restarts; conflicting reuse returns `idempotency_key_conflict`. No-key submissions and GET retain their existing contracts. Keys remain at least as long as Jobs, without automatic cleanup. See ADR-0010. |
 | Slice 2A supports Worker registration and liveness | Accepted / Implemented | Worker API PUT atomically registers or replaces session, configuration and capability set. Durable accepted-session history fences replaced sessions for both delayed PUT and heartbeat; liveness persists monotonic LastSeenAtUtc. UUID v7 WorkerId is stable and SessionId changes per launch; neither authenticates the caller. Trusted/private deployment only, without authentication. Application owns READ COMMITTED transactions; PostgreSQL advisory/row locks serialize operations. A 10-second heartbeat and derived 30-second offline threshold come from focused Application options. Legacy rows can be adopted without backfill. See ADR-0011. |
 | Synestra follows a pragmatic domain-oriented architecture | Accepted direction | Domain modeling is used where useful without adopting full ceremonial DDD by default. |
-| Slice 2B supports atomic claim and durable ownership | Accepted / Implemented | Current online Worker sessions claim one available, exactly supported Pending Job through the Worker API. Application owns READ COMMITTED; Worker FOR UPDATE protects capacity and session state, then Job FOR UPDATE SKIP LOCKED applies priority/availability/creation/UUID ordering. Job.StartAttempt creates a Running attempt and a session-bound Lease atomically with Pending -> Running. Default duration is 30 seconds; claim never changes liveness. Expired leases stop consuming slots without finalization or retry. API returns eight execution fields after commit, identical 204 for no work/capacity and stable Problem Details. PostgreSQL and API concurrency/restart tests cover the path. Legacy null-session leases are preserved, with checks/FKs for non-null bindings. See ADR-0012. |
+| Slice 2B supports atomic claim and durable ownership | Accepted / Implemented | Current online Worker sessions claim one available, exactly supported Pending Job through the Worker API. Application owns READ COMMITTED; Worker FOR UPDATE protects capacity and session state, then Job FOR UPDATE SKIP LOCKED applies priority/availability/creation/UUID ordering. Job.StartAttempt creates a Running attempt and a session-bound Lease atomically with Pending -> Running. Default duration is 30 seconds; claim never changes liveness. Expired leases stop consuming slots without finalization or retry. API returns the original eight execution fields plus ADR-0013 leaseToken after commit, identical 204 for no work/capacity and stable Problem Details. PostgreSQL and API concurrency/restart tests cover the path. Legacy null-session leases are preserved, with checks/FKs for non-null bindings. See ADR-0012. |
+| Slice 2C supports Lease renewal and execution reporting | Accepted / Implemented | ADR-0013 adds per-Lease random token/hash fencing, monotonic renewal independent of heartbeat, strict success/failure reports and durable ReportId replay. Job coordinates terminal Job/attempt state and matching finish/release times; PostgreSQL transactions commit snapshot and capacity release together. Ordered row locks and rollback cleanup protect races and scope reuse. Legacy tokenless leases remain fenced; Client GetJob is unchanged. |
 
 ---
 
@@ -66,9 +67,7 @@ The following ideas are considered plausible directions but are not yet binding 
 
 | Proposal | Why it remains Proposed |
 |---|---|
-| Domain methods such as `attempt.Succeed()` and `lease.Renew()` | Completion and renewal remain undefined. Job.StartAttempt is implemented under ADR-0012; registration and RecordHeartbeat under ADR-0011. |
 | Focused application services/use cases instead of full CQRS/Mediator infrastructure | Likely sufficient for the current system, but the exact Application architecture should emerge from real use cases. |
-| Lease renewal | The lease model strongly suggests renewal, but the protocol and failure semantics remain undefined. |
 | Retry with backoff | Retries are expected, but retry policy, timing, classification, and ownership are not yet defined. |
 | Live-process pause | Candidate for a later feature; resource, lease, and capacity semantics are undefined. Durable resume is a separate open question. |
 | A worker agent supervises separate execution processes | This fits dynamic workloads and CEF process trees, but agent lifetime and process-isolation rules are not yet defined. |
@@ -98,18 +97,18 @@ Implementation must not silently choose semantics for them unless the relevant t
 | Delivery guarantee | Is execution explicitly at-least-once, or does Synestra provide another guarantee? |
 | Duplicate execution | Under which failure scenarios can the same logical job execute more than once? |
 | Lease expiration | What state does an attempt enter when its lease expires? |
-| Late completion | What happens when a worker reports success or failure after losing its lease? |
+| Lost-execution finalization | ADR-0013 accepts late completion only while Running/unreleased with valid ownership; what loss state and detection eligibility will Slice 2D use? |
 | Retry creation | Claim creates an attempt for a Pending Job under ADR-0012. How will a future retry policy make a failed/lost Job eligible again? |
 | Retry policy | How are maximum attempts, backoff, and recoverable/non-recoverable failures defined? |
 | Cancellation | Given cooperative running cancellation, what are the exact transitions, Pending behavior, completion races, and unresponsive-handler rules? |
 | Pause and resume | How would live-process pause work, and is durable continuation after restart or relocation required? How would resume relate to attempts? |
-| Execution data | What are the result/artifact contracts, progress ordering, checkpoint compatibility, and technical versus business success rules? |
+| Execution data | ADR-0013 defines Worker completion data. What are the client-visible outcome/result, artifacts, progress, checkpoint and business success contracts? |
 | Workload inputs | How are secrets delivered, input snapshots/versioning handled, and concurrent account access constrained? |
-| Capacity accounting | Claim reserves slots from active Lease rows under ADR-0012. What explicit release/reporting and execution resource rules will apply? |
-| Job status | Claim atomically starts Job and attempt under ADR-0012. How will finalization and completion determine Job status? |
+| Capacity accounting | Claim reserves and completion releases slots under ADR-0012/0013. What execution resource and future control rules will apply? |
+| Job status | Job coordinates claim and reported success/failure with its attempt. What terminal state will loss finalization record? |
 | Scheduling beyond Slice 1 | Slice 1 accepts only optional delayed availability. Will recurring/cron jobs, deadlines, timeouts, or other scheduling inputs ever belong to the core? |
 | Payload evolution | How are workload-specific schemas, contract versioning, and deeper security validation represented? |
-| Execution transaction boundaries | SubmitJob, RegisterWorker, RecordWorkerHeartbeat and ClaimWork own transactions. What boundaries will renewal and finalization require? |
+| Execution transaction boundaries | SubmitJob, registration, heartbeat, claim, renewal and reporting own transactions. Slice 2D must follow ADR-0013's Worker -> Job -> attempt -> Lease lock order; its detection/batching policy remains open. |
 | Concurrency control | Which operations require pessimistic locking, optimistic concurrency, or both? |
 | Application persistence boundary | Should Application depend on custom persistence abstractions, or can some use cases work with more direct infrastructure-specific interfaces? |
 | Retention | How long are jobs, attempts, leases, and worker records retained? |
@@ -199,15 +198,17 @@ The exact Application-to-Persistence boundary remains subject to implementation 
 
 ## Current Product Interpretation
 
-Slices 1, 1A, 1B, 2A and 2B are implemented. Worker registration, session replacement,
-liveness and atomic claim with durable execution ownership survive API restarts,
-alongside submission and retrieval. Slice 2 is still incomplete. Next is Slice 2C:
-lease renewal and execution reporting, beginning with current-session/lease-token
-fencing, idempotent success/failure reports, a small result contract and completion
-races. Lost-execution finalization may remain a separate Slice 2D. Neither is
-implemented in Slice 2B.
-The minimally useful execution product still needs a Worker agent and workload,
-lease maintenance, completion/results and reliable lost-execution recording.
+Slices 1, 1A, 1B, 2A, 2B and 2C are implemented. Worker registration, liveness,
+claim, token-fenced renewal and idempotent execution reporting survive API restarts.
+Reported success/failure atomically finalizes Job/attempt, persists a small result
+or error, and releases Lease capacity. Late completion before finalization is
+accepted; this is not lost-execution recovery. Slice 2 remains incomplete.
+
+Next is Slice 2D: guaranteed lost-execution finalization without automatic retry.
+Slice 2E adds a minimal Worker and bounded workload; Slice 2F adds client-visible
+terminal outcome/result. No Worker executable, actual workload execution or Client
+API outcome/result expansion exists yet. A minimally useful execution product still
+needs those increments and the verified submit-to-result path with defined loss behavior.
 
 The current working interpretation is:
 

@@ -33,7 +33,48 @@ public sealed class JobAttempt
     public JobAttemptStatus Status { get; private set; }
     public DateTime StartedAtUtc { get; private set; }
     public DateTime? FinishedAtUtc { get; private set; }
+    public string? Result { get; private set; }
     public string? ErrorCode { get; private set; }
     public string? ErrorMessage { get; private set; }
     public Lease? Lease { get; private set; }
+
+    internal void Succeed(string result, DateTime finishedAtUtc)
+    {
+        ValidateCompletion(finishedAtUtc);
+        DomainValidation.RequiredText(result, int.MaxValue, nameof(result));
+        Result = result;
+        Status = JobAttemptStatus.Succeeded;
+        FinishedAtUtc = finishedAtUtc;
+    }
+
+    internal void Fail(string code, string message, DateTime finishedAtUtc)
+    {
+        ValidateCompletion(finishedAtUtc);
+        DomainValidation.RequiredText(code, 100, nameof(code));
+        DomainValidation.RequiredText(message, 2000, nameof(message));
+        if (code.Contains('\0') || message.Contains('\0'))
+        {
+            throw new ArgumentException("Error text cannot contain NUL.");
+        }
+
+        ErrorCode = code;
+        ErrorMessage = message;
+        Status = JobAttemptStatus.Failed;
+        FinishedAtUtc = finishedAtUtc;
+    }
+
+    private void ValidateCompletion(DateTime finishedAtUtc)
+    {
+        DomainValidation.Utc(finishedAtUtc, nameof(finishedAtUtc));
+        if (Status != JobAttemptStatus.Running || FinishedAtUtc is not null
+            || Result is not null || ErrorCode is not null || ErrorMessage is not null)
+        {
+            throw new InvalidOperationException("Only a running, incomplete attempt can complete.");
+        }
+
+        if (finishedAtUtc < StartedAtUtc)
+        {
+            throw new ArgumentOutOfRangeException(nameof(finishedAtUtc), "Completion cannot precede the attempt start.");
+        }
+    }
 }

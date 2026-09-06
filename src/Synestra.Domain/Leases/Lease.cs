@@ -34,4 +34,40 @@ public sealed class Lease
     public DateTime AcquiredAtUtc { get; private set; }
     public DateTime ExpiresAtUtc { get; private set; }
     public DateTime? ReleasedAtUtc { get; private set; }
+
+    public void Renew(DateTime serverUtc, TimeSpan duration)
+    {
+        ValidateTime(serverUtc);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(duration, TimeSpan.Zero);
+        if (ReleasedAtUtc is not null || ExpiresAtUtc <= serverUtc)
+        {
+            throw new InvalidOperationException("Only an active Lease can be renewed.");
+        }
+
+        var expiration = serverUtc.Add(duration);
+        if (expiration > ExpiresAtUtc)
+        {
+            ExpiresAtUtc = expiration;
+        }
+    }
+
+    public void Release(DateTime releasedAtUtc)
+    {
+        ValidateTime(releasedAtUtc);
+        if (ReleasedAtUtc is not null)
+        {
+            throw new InvalidOperationException("A released Lease cannot be released again.");
+        }
+
+        ReleasedAtUtc = releasedAtUtc;
+    }
+
+    private void ValidateTime(DateTime value)
+    {
+        DomainValidation.Utc(value, nameof(value));
+        if (value < AcquiredAtUtc)
+        {
+            throw new ArgumentOutOfRangeException(nameof(value), "Lease time cannot precede acquisition.");
+        }
+    }
 }

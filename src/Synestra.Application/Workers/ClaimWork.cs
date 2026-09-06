@@ -50,10 +50,11 @@ public sealed class ClaimWork(
 
         var attempt = job.StartAttempt(now);
         var lease = new Lease(attempt.Id, workerId, sessionId, now, TimeSpan.FromSeconds(options.LeaseDurationSeconds));
-        transaction.Add(attempt, lease);
+        var token = LeaseToken.Generate();
+        transaction.Add(attempt, lease, LeaseToken.Hash(token)!);
         await transaction.CommitAsync(cancellationToken);
         return new(ClaimWorkOutcome.Succeeded, new ClaimedWork(
-            job.Id, attempt.Id, lease.Id, attempt.Number, job.Type, job.Payload,
+            job.Id, attempt.Id, lease.Id, token, attempt.Number, job.Type, job.Payload,
             lease.AcquiredAtUtc, lease.ExpiresAtUtc));
     }
 }

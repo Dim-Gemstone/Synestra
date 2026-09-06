@@ -74,4 +74,40 @@ public sealed class Job
         Status = JobStatus.Running;
         return attempt;
     }
+
+    public void SucceedAttempt(JobAttempt attempt, string result, DateTime finishedAtUtc)
+    {
+        ValidateCompletion(attempt, finishedAtUtc);
+        attempt.Succeed(result, finishedAtUtc);
+        Status = JobStatus.Succeeded;
+        CompletedAtUtc = finishedAtUtc;
+    }
+
+    public void FailAttempt(JobAttempt attempt, string code, string message, DateTime finishedAtUtc)
+    {
+        ValidateCompletion(attempt, finishedAtUtc);
+        attempt.Fail(code, message, finishedAtUtc);
+        Status = JobStatus.Failed;
+        CompletedAtUtc = finishedAtUtc;
+    }
+
+    private void ValidateCompletion(JobAttempt attempt, DateTime finishedAtUtc)
+    {
+        ArgumentNullException.ThrowIfNull(attempt);
+        DomainValidation.Utc(finishedAtUtc, nameof(finishedAtUtc));
+        if (Status != JobStatus.Running || CompletedAtUtc is not null)
+        {
+            throw new InvalidOperationException("Only a running, incomplete Job can complete.");
+        }
+
+        if (attempt.JobId != Id || !_attempts.Contains(attempt))
+        {
+            throw new ArgumentException("The attempt must belong to this Job.", nameof(attempt));
+        }
+
+        if (finishedAtUtc < CreatedAtUtc)
+        {
+            throw new ArgumentOutOfRangeException(nameof(finishedAtUtc), "Completion cannot precede Job creation.");
+        }
+    }
 }

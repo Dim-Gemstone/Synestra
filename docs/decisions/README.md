@@ -27,5 +27,6 @@ Deferred ideas that have not yet required an architectural decision should norma
 | 0010 | Idempotent Job submission | Accepted |
 | 0011 | [Worker registration and liveness](0011-worker-registration-and-liveness.md) | Accepted |
 | 0012 | [Atomic Job claim and execution ownership](0012-atomic-job-claim.md) | Accepted |
+| 0013 | [Lease renewal and execution reporting](0013-lease-renewal-and-execution-reporting.md) | Accepted |
 
 See `../project-status.md` for unresolved questions, proposals, rejected directions, and deferred work.
