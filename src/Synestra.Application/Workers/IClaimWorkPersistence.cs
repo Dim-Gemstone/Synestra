@@ -15,6 +15,6 @@ public interface IClaimWorkTransaction : IAsyncDisposable
     Task<int> CountActiveLeasesAsync(Guid workerId, DateTime serverUtc, CancellationToken cancellationToken);
     // Returns a locked eligible Job with its complete attempt history for domain numbering.
     Task<Job?> LockEligibleJobAsync(Guid workerId, DateTime serverUtc, CancellationToken cancellationToken);
-    void Add(JobAttempt attempt, Lease lease);
+    void Add(JobAttempt attempt, Lease lease, byte[] tokenHash);
     Task CommitAsync(CancellationToken cancellationToken);
 }

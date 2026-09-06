@@ -7,10 +7,10 @@ decided.
 | Term | Meaning | Not | Confirmed semantics | Still undecided |
 |---|---|---|---|---|
 | `JobDefinition` | Registered type of executable work | A submitted execution instance | Has a stable UUID identity and a unique immutable machine-readable type; disabling blocks new submissions but does not affect existing jobs | Who manages definitions |
-| `Job` | One logical unit of submitted work | One physical execution | References its definition by ID, snapshots its type, preserves attempt history and uses server-owned UUID v7 identity and UTC creation time; atomic claim transitions Pending -> Running through StartAttempt under ADR-0012 | Completion/status derivation, cancellation and retry semantics |
-| `JobAttempt` | One execution try for a Job | The retry policy itself | Created Running by Job during atomic claim, with number max(history) + 1 and start time equal to Lease acquisition | Completion outcome and state after lease expiration |
-| `Lease` | Time-bounded exclusive right for a Worker session to execute an attempt | A permanent lock, credential or execution result | Claim persists WorkerId and current SessionId, acquisition and expiration; one unreleased, unexpired Lease reserves one slot | Renewal, explicit release, expiration recovery and late-result behavior |
-| `Worker` | Registered worker agent with identity, liveness and finite capacity | An OS thread, HTTP request, browser instance or individual CEF subprocess | Stable UUID v7 identity, replaceable UUID v7 process session, exact supported types and positive execution-slot limit; ADR-0011 liveness and ADR-0012 atomic claim | Future authentication, process lifetime and release/reporting protocol |
+| `Job` | One logical unit of submitted work | One physical execution | References its definition by ID, snapshots its type and preserves attempt history; StartAttempt owns Pending -> Running, and SucceedAttempt/FailAttempt coordinate terminal Job/attempt state under ADR-0013 | Lost-execution finalization, cancellation and retry semantics |
+| `JobAttempt` | One execution try for a Job | The retry policy itself | Created Running during claim with max(history) + 1; completion stores success result or failure error and a finish time matching Job completion | State chosen by the future lost-execution finalizer |
+| `Lease` | Time-bounded exclusive right for a Worker session to execute an attempt | A permanent lock or execution result; LeaseId is not a credential | Worker/session-bound, renewable before expiration, released atomically on completion; one unreleased/unexpired Lease consumes a slot | Lost-execution finalization and any future standalone release protocol |
+| `Worker` | Registered worker agent with identity, liveness and finite capacity | An OS thread, HTTP request, browser instance or individual CEF subprocess | Stable UUID v7 identity and replaceable process session; exact supported types; positive capacity; only registration/heartbeat confirm liveness | Future authentication and execution process lifetime/isolation |
 
 ## Working execution terminology
 
@@ -60,7 +60,27 @@ UTC. Count all sessions of a Worker, including legacy null-session leases. Exact
 expiration frees the slot without finalizing the Running attempt or creating a
 retry. Reducing capacity or replacing the session never deletes existing leases.
 New leases require UUID v7 session binding; nullable schema preserves legacy rows.
-Ownership is durable, but workload execution and reporting are still unimplemented.
+Ownership and reporting are durable, but actual workload execution is unimplemented.
+
+## Renewal and completion terminology
+
+ADR-0013 implements Slice 2C. A Lease token is a random 256-bit per-Lease fencing
+secret, returned as canonical unpadded base64url once at claim. PostgreSQL stores
+only SHA-256 hash; tokenless legacy leases cannot renew/report. This does not add
+Worker authentication or change the trusted/private deployment limitation.
+
+Renewal maintains execution ownership, independently of Worker availability for
+new claims. It extends expiration monotonically without updating LastSeenAtUtc.
+ReportId is a client-generated RFC UUID v7 completion identity scoped to an attempt.
+The persisted completion snapshot holds the original success response; structural
+JSON equivalence permits replay despite object order/formatting differences.
+
+Completion atomically finalizes Job/attempt, persists a small success result or
+failure error, and releases Lease capacity. Result is an object up to 64 KiB in
+received UTF-8, depth 32, without duplicate names; workload-specific validation is
+absent. Late completion while Running/unreleased may be accepted after expiration,
+without renewing ownership. It is not lost-execution recovery. The next Slice 2D
+finalizer and eventual client-visible outcome/result remain unimplemented.
 
 ## Scenario execution terminology
 
@@ -73,7 +93,7 @@ loops. These terms describe requirements, not additional implemented entities.
 | Stage | Description of the current part of execution | Does not automatically create a Job or workflow node |
 | Progress | Counters or other indication of advancement | Does not guarantee enough state for recovery |
 | Partial result | Useful work already produced | May exist even when execution is cancelled or fails |
-| Final result | Workload-specific output associated with completed execution | Exact contract and business success rules remain open |
+| Final result | Workload-specific output associated with successful execution | ADR-0013 persists a bounded object result through Worker API; business rules and client-visible result remain open |
 | Artifact reference | Reference to a large input or output file | Storage, access, and retention contracts remain open |
 | Checkpoint | State sufficient for workload-specific continuation | Deferred; distinct from progress and partial results |
 | Live-process pause | Candidate suspension while execution state remains alive | Deferred; does not promise restart recovery |

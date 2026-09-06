@@ -5,5 +5,5 @@ public enum ClaimWorkOutcome { Succeeded, NoWork, InvalidRequest, WorkerNotFound
 public sealed record ClaimWorkResult(ClaimWorkOutcome Outcome, ClaimedWork? Work = null);
 
 public sealed record ClaimedWork(
-    Guid JobId, Guid AttemptId, Guid LeaseId, int AttemptNumber, string Type, string Payload,
+    Guid JobId, Guid AttemptId, Guid LeaseId, string LeaseToken, int AttemptNumber, string Type, string Payload,
     DateTime AcquiredAtUtc, DateTime ExpiresAtUtc);

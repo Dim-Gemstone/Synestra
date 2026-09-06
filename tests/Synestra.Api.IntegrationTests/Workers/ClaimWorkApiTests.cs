@@ -53,7 +53,7 @@ public sealed class ClaimWorkApiTests(PostgreSqlFixture postgres) : IAsyncLifeti
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>(Token);
-        Assert.Equal(new[] { "acquiredAtUtc", "attemptId", "attemptNumber", "expiresAtUtc", "jobId", "leaseId", "payload", "type" },
+        Assert.Equal(new[] { "acquiredAtUtc", "attemptId", "attemptNumber", "expiresAtUtc", "jobId", "leaseId", "leaseToken", "payload", "type" },
             body.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal));
         Assert.Equal(jobId, body.GetProperty("jobId").GetGuid());
         Assert.Equal(7, body.GetProperty("attemptId").GetGuid().Version);

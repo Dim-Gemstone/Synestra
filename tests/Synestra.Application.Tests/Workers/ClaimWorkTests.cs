@@ -211,7 +211,7 @@ public sealed class ClaimWorkTests
             return Task.FromResult(Job is not null && Job.AvailableAtUtc <= serverUtc
                 && Worker.SupportedTypes.Any(type => StringComparer.Ordinal.Equals(type.Type, Job.Type)) ? Job : null);
         }
-        public void Add(JobAttempt attempt, Lease lease) { Calls.Add("add"); Attempt = attempt; Lease = lease; }
+        public void Add(JobAttempt attempt, Lease lease, byte[] tokenHash) { Calls.Add("add"); Attempt = attempt; Lease = lease; Assert.Equal(32, tokenHash.Length); }
         public async Task CommitAsync(CancellationToken cancellationToken)
         {
             Call("commit", cancellationToken);

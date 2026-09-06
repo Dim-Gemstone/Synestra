@@ -1,8 +1,9 @@
 # Roadmap
 
-Slices 1, 1A, 1B, 2A, and 2B are implemented. Slice 2 remains incomplete.
+Slices 1, 1A, 1B, 2A, 2B, and 2C are implemented. Slice 2 remains incomplete.
 ADR-0011 defines registration/liveness and ADR-0012 defines atomic claim and
-execution ownership. ADR-0008 accepts the execution direction and
+execution ownership; ADR-0013 defines token fencing, renewal and completion reports.
+ADR-0008 accepts the execution direction and
 the requirements illustrated in `execution-scenarios.md`. The later slices below are
 a proposed delivery sequence, not implemented features or approval of their open
 protocol decisions. Resolve the listed decisions before implementing each slice.
@@ -111,11 +112,12 @@ Decisions required before implementation:
 - Worker identity/trust, registration, heartbeat, capabilities and capacity meaning
   are resolved by ADR-0011; claim eligibility, ordering, capacity reservation,
   Pending -> Running transition, initial Lease duration and claim transaction are
-  resolved by ADR-0012; release and execution resource boundary remain open;
-- lease maintenance and loss detection;
-- lost-execution finalization without automatic rerun, late reports, duplicate
-  completion requests, and completion/expiration races;
-- result/error contracts, limits, and rules for selecting the current Job outcome.
+  resolved by ADR-0012; ADR-0013 resolves completion slot release and renewal;
+  the execution resource boundary remains open;
+- loss detection and finalization without automatic rerun, using ADR-0013's lock
+  order and first-committed terminal transition rule;
+- client-visible outcome/result contract; ADR-0013 resolves Worker result/error
+  limits, durable replay and late completion before finalization.
 
 Tasks and completion criteria:
 
@@ -166,7 +168,8 @@ There is no Worker executable, read/list endpoint, background monitor or recover
 - one unreleased, unexpired Lease occupies a slot across all Worker sessions;
   capacity changes do not remove ownership, and expired leases cease to count
   without finalizing or retrying their Job/attempt;
-- the thin Worker endpoint returns the eight-field 200 only after commit, or
+- the thin Worker endpoint returns execution input only after commit (the original
+  eight fields plus the ADR-0013 leaseToken extension), or
   identical empty 204 for no eligible work and exhausted capacity, with stable
   validation, session, missing-Worker and offline Problem Details;
 - migration preserves legacy null-session leases and constrains non-null session
@@ -174,16 +177,51 @@ There is no Worker executable, read/list endpoint, background monitor or recover
 - Domain, Application, PostgreSQL concurrency/rollback/constraint and API restart
   and multi-instance tests cover ownership, fencing and capacity.
 
-This creates durable ownership only. Workloads do not execute, and there is no
-renewal, completion/failure reporting, result or lost-execution finalization yet.
+Slice 2B creates durable ownership only. Slice 2C adds renewal and reporting below;
+workloads still do not execute and lost-execution finalization remains absent.
 
-### Slice 2C — Lease renewal and execution reporting contract (next)
+### Slice 2C — Lease renewal and execution reporting (implemented)
 
-Define current-session and lease-token fencing, renewal, idempotent success/failure
-reports, a small result contract and completion races before implementation.
-Lost-execution finalization can remain a separate Slice 2D. Worker executable,
-workload execution and client-visible outcome still need delivery before the
-whole Slice 2 is complete. Neither Slice 2C nor 2D is implemented.
+- ADR-0013 extends claim with a server-generated 256-bit opaque Lease token;
+  PostgreSQL stores its SHA-256 hash only, with no legacy backfill;
+- current-session/token-fenced renewal extends valid ownership monotonically,
+  including for an offline Worker, without changing heartbeat liveness;
+- strict PUT completion accepts success with an object result up to 64 KiB/depth 32,
+  or failure with bounded error code/message;
+- Job coordinates Running -> Succeeded/Failed for itself and its attempt; the
+  same transaction persists matching completion/release times and frees capacity;
+- ReportId and original snapshot support structurally equivalent replay after
+  response loss or API restart, with stable conflicts for different reports;
+- focused Application READ COMMITTED transactions and PostgreSQL Worker -> Job ->
+  JobAttempt -> Lease locks order renewal/reporting with registration, heartbeat
+  and claim; rollback cleanup keeps the same scope reusable;
+- Domain, Application, PostgreSQL constraint/migration/rollback/concurrency and
+  API contract/restart/multi-instance tests cover the protocol.
+
+Late completion is accepted after expiration only while execution remains Running
+and unreleased with valid ownership. This is not lost-execution recovery. No Worker
+executable, actual workload execution, client-visible outcome/result expansion or
+lost-execution finalizer is implemented. The whole Slice 2 remains incomplete.
+
+### Slice 2D — Lost-execution finalization (next)
+
+Define the terminal loss state and detection eligibility, then finalize abandoned
+execution without automatic retry. Use ADR-0013's row locks and first-committed
+terminal transition rule for races with completion. Guarantee eventual recording
+of lost execution; expiration freeing capacity alone is insufficient.
+
+### Slice 2E — Minimal Worker and bounded test workload (proposed)
+
+Implement a minimal Worker agent and bounded handler that exercise registration,
+heartbeat, claim, renewal and reporting. Define execution isolation and resource
+cleanup within this increment. No Worker executable exists yet.
+
+### Slice 2F — Client-visible terminal outcome and small result (proposed)
+
+Explicitly evolve ADR-0009's read contract to expose terminal outcome and a small
+result. Verify submit-to-result and guaranteed lost-execution finalization before
+marking Slice 2 complete. This may be combined with 2E in a controlled end-to-end
+increment, but is not implemented by 2C.
 
 ## Slice 3 — Observe and cancel a long-running scenario (proposed)
 
@@ -216,15 +254,16 @@ Pause and automatic retries remain excluded.
 ## Schema evolution and product checkpoint
 
 Add schema changes alongside the slice that needs them. Submission deduplication
-is implemented. Candidate areas include attempt results, artifacts, progress,
+and attempt completion/results are implemented. Candidate areas include artifacts, progress,
 and control requests. Checkpoints and workflow state remain conditional on later decisions.
 Keep Job and JobAttempt distinct; do not add a permanent one-attempt-per-Job
 constraint or speculative retry/workflow tables.
 
 Currently submission, opt-in idempotent replay, retrieval by ID, Worker
-registration/liveness and atomic claim with durable execution ownership are
-implemented; workload execution, results, and control are not.
-The next increment is Slice 2C, starting with its required protocol decisions.
+registration/liveness, atomic claim, renewal and idempotent execution reporting
+are implemented. Actual workload execution, client-visible terminal outcome/result,
+lost-execution finalization and control are not.
+The next increment is Slice 2D, followed by 2E and 2F as described above.
 A minimally useful execution product still needs Worker execution, reliable ownership/loss handling,
 client-visible outcomes, and a concrete workload. Long-running scenario control
 follows in Slice 3; automatic retries, pause, and Workflow are not prerequisites

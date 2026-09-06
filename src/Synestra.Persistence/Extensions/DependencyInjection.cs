@@ -16,6 +16,8 @@ public static class DependencyInjection
         s.AddScoped<ISubmitJobPersistence, SubmitJobPersistence>();
         s.AddScoped<IWorkerPersistence, WorkerPersistence>();
         s.AddScoped<IClaimWorkPersistence, ClaimWorkPersistence>();
+        s.AddScoped<IRenewLeasePersistence, RenewLeasePersistence>();
+        s.AddScoped<IReportExecutionCompletionPersistence, ReportExecutionCompletionPersistence>();
         return s;
     }
 }
