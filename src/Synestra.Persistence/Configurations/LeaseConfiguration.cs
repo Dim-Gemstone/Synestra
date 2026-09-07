@@ -28,6 +28,9 @@ internal sealed class LeaseConfiguration : IEntityTypeConfiguration<Lease>
         builder.Property(x => x.ReleasedAtUtc).HasColumnName("released_at_utc");
         builder.HasIndex(x => x.JobAttemptId).IsUnique();
         builder.HasIndex(x => x.WorkerId);
+        builder.HasIndex(x => new { x.ExpiresAtUtc, x.Id })
+            .HasDatabaseName("IX_leases_expiration_unreleased")
+            .HasFilter("released_at_utc IS NULL");
         builder.HasOne<JobAttempt>().WithOne(x => x.Lease).HasForeignKey<Lease>(x => x.JobAttemptId).OnDelete(DeleteBehavior.Cascade);
         builder.HasOne<Worker>().WithMany().HasForeignKey(x => x.WorkerId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<WorkerSessionRecord>().WithMany().HasForeignKey(x => new { x.WorkerId, x.SessionId })

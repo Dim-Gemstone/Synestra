@@ -91,6 +91,14 @@ public sealed class Job
         CompletedAtUtc = finishedAtUtc;
     }
 
+    public void AbandonAttempt(JobAttempt attempt, DateTime finishedAtUtc)
+    {
+        ValidateCompletion(attempt, finishedAtUtc);
+        attempt.Abandon(finishedAtUtc);
+        Status = JobStatus.Failed;
+        CompletedAtUtc = finishedAtUtc;
+    }
+
     private void ValidateCompletion(JobAttempt attempt, DateTime finishedAtUtc)
     {
         ArgumentNullException.ThrowIfNull(attempt);

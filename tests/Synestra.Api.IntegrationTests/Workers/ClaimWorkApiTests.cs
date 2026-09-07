@@ -268,6 +268,7 @@ public sealed class ClaimWorkApiTests(PostgreSqlFixture postgres) : IAsyncLifeti
     private SynestraDbContext Context() => new(new DbContextOptionsBuilder<SynestraDbContext>().UseNpgsql(_database.ConnectionString).Options);
     private WebApplicationFactory<Program> Factory() => new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         builder.UseSetting("ConnectionStrings:synestra", _database.ConnectionString)
+            .UseSetting("ExecutionFinalization:Enabled", "false")
             .ConfigureTestServices(services => services.AddSingleton<TimeProvider>(_clock)));
     private sealed class Clock(DateTimeOffset now) : TimeProvider
     {

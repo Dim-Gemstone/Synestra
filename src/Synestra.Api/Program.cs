@@ -1,3 +1,4 @@
+using Synestra.Api.Executions;
 using Synestra.Application.Extensions;
 using Synestra.Persistence.Extensions;
 
@@ -9,6 +10,13 @@ var connectionString =
 
 builder.Services.AddPersistence(connectionString);
 builder.Services.AddApplication();
+builder.Services.AddOptions<ExecutionFinalizationOptions>()
+    .BindConfiguration(ExecutionFinalizationOptions.SectionName)
+    .Validate(options => options.IntervalSeconds > 0 && options.IntervalSeconds <= (uint.MaxValue - 1) / 1000,
+        "ExecutionFinalization:IntervalSeconds must be positive and within the timer's supported range.")
+    .Validate(options => options.BatchSize > 0, "ExecutionFinalization:BatchSize must be positive.")
+    .ValidateOnStart();
+builder.Services.AddHostedService<ExpiredExecutionFinalizer>();
 builder.Services.AddControllers();
 builder.Services.AddProblemDetails(options =>
 {

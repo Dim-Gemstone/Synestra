@@ -1,8 +1,10 @@
 # Roadmap
 
-Slices 1, 1A, 1B, 2A, 2B, and 2C are implemented. Slice 2 remains incomplete.
+Slices 1, 1A, 1B, 2A, 2B, 2C, and 2D are implemented. Slice 2 remains incomplete.
 ADR-0011 defines registration/liveness and ADR-0012 defines atomic claim and
 execution ownership; ADR-0013 defines token fencing, renewal and completion reports.
+ADR-0014 defines implemented automatic loss finalization through an atomic
+single-execution path, bounded discovery and an enabled-by-default hosted service.
 ADR-0008 accepts the execution direction and
 the requirements illustrated in `execution-scenarios.md`. The later slices below are
 a proposed delivery sequence, not implemented features or approval of their open
@@ -114,8 +116,8 @@ Decisions required before implementation:
   Pending -> Running transition, initial Lease duration and claim transaction are
   resolved by ADR-0012; ADR-0013 resolves completion slot release and renewal;
   the execution resource boundary remains open;
-- loss detection and finalization without automatic rerun, using ADR-0013's lock
-  order and first-committed terminal transition rule;
+- loss detection and finalization without automatic rerun are resolved by ADR-0014,
+  preserving ADR-0013's lock order and first-committed terminal transition rule;
 - client-visible outcome/result contract; ADR-0013 resolves Worker result/error
   limits, durable replay and late completion before finalization.
 
@@ -178,7 +180,7 @@ There is no Worker executable, read/list endpoint, background monitor or recover
   and multi-instance tests cover ownership, fencing and capacity.
 
 Slice 2B creates durable ownership only. Slice 2C adds renewal and reporting below;
-workloads still do not execute and lost-execution finalization remains absent.
+Slice 2D adds automatic loss finalization. Workloads still do not execute.
 
 ### Slice 2C — Lease renewal and execution reporting (implemented)
 
@@ -200,15 +202,28 @@ workloads still do not execute and lost-execution finalization remains absent.
 
 Late completion is accepted after expiration only while execution remains Running
 and unreleased with valid ownership. This is not lost-execution recovery. No Worker
-executable, actual workload execution, client-visible outcome/result expansion or
-lost-execution finalizer is implemented. The whole Slice 2 remains incomplete.
+executable, actual workload execution or client-visible outcome/result expansion
+is implemented. The whole Slice 2 remains incomplete.
 
-### Slice 2D — Lost-execution finalization (next)
+### Slice 2D — Lost-execution finalization (implemented)
 
-Define the terminal loss state and detection eligibility, then finalize abandoned
-execution without automatic retry. Use ADR-0013's row locks and first-committed
-terminal transition rule for races with completion. Guarantee eventual recording
-of lost execution; expiration freeing capacity alone is insufficient.
+ADR-0014 defines terminal loss, exact expiration eligibility, nonblocking ordered
+row locks and the first-committed terminal transition rule. Internal finalization
+of one expired Lease is implemented: Job becomes Failed, attempt becomes Abandoned,
+and the Lease is released atomically without retry or a synthetic Worker report.
+Domain, Application, PostgreSQL concurrency/rollback/legacy and API regression
+tests cover that path.
+
+Bounded read-only discovery and an internal sweep are also implemented, with keyset
+progression, independent candidate transactions, failure isolation and revisits of
+skipped work. PostgreSQL tests cover backlog, concurrency, reset and legacy migration
+compatibility. The API hosted service runs an immediate first pass and waits
+5 seconds after each pass, inspecting at most 100 candidates by default. Validated
+configuration supports explicit disablement. Controlled host tests verify startup,
+shutdown, temporary failure, restart, concurrent instances and Worker API races.
+Eventual recording requires an enabled host, available database and locks that
+eventually release; it has no exact deadline during outage or contention.
+Slice 2 remains incomplete; the next increment is Slice 2E.
 
 ### Slice 2E — Minimal Worker and bounded test workload (proposed)
 
@@ -260,11 +275,11 @@ Keep Job and JobAttempt distinct; do not add a permanent one-attempt-per-Job
 constraint or speculative retry/workflow tables.
 
 Currently submission, opt-in idempotent replay, retrieval by ID, Worker
-registration/liveness, atomic claim, renewal and idempotent execution reporting
-are implemented. Actual workload execution, client-visible terminal outcome/result,
-lost-execution finalization and control are not.
-The next increment is Slice 2D, followed by 2E and 2F as described above.
-A minimally useful execution product still needs Worker execution, reliable ownership/loss handling,
+registration/liveness, atomic claim, renewal, idempotent execution reporting and
+automatic loss finalization with a bounded discovery sweep are implemented.
+Actual workload execution, client-visible terminal outcome/result and control
+remain absent. Continue with Slice 2E, followed by 2F as described above.
+A minimally useful execution product still needs Worker execution,
 client-visible outcomes, and a concrete workload. Long-running scenario control
 follows in Slice 3; automatic retries, pause, and Workflow are not prerequisites
 for the first execution slice.

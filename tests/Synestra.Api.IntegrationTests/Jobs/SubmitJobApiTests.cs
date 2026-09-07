@@ -432,5 +432,6 @@ public sealed class SubmitJobApiTests(PostgreSqlFixture postgres) : IAsyncLifeti
 
     private WebApplicationFactory<Program> CreateFactory() =>
         new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
-            builder.UseSetting("ConnectionStrings:synestra", _database.ConnectionString));
+            builder.UseSetting("ConnectionStrings:synestra", _database.ConnectionString)
+                .UseSetting("ExecutionFinalization:Enabled", "false"));
 }

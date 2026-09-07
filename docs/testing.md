@@ -52,6 +52,50 @@ becomes a measurable bottleneck, replace it only with another verified isolation
 mechanism, such as a fresh schema or deterministic database reset. Do not trade
 test isolation for execution speed implicitly.
 
+## Automatic execution finalization
+
+The API host runs the ADR-0014 finalizer by default. Configure it through the
+`ExecutionFinalization` section (or equivalent environment variables):
+
+```json
+{
+  "ExecutionFinalization": {
+    "Enabled": true,
+    "IntervalSeconds": 5,
+    "BatchSize": 100
+  }
+}
+```
+
+These are the production defaults. The first pass starts after ApplicationStarted
+without an interval delay; each later delay starts after the preceding pass and
+scope disposal. Startup validates positive batch size and an interval of 1 through
+4,294,967 seconds (the runtime timer bound), including when disabled. Configuration
+changes require host restart. Set `ExecutionFinalization__Enabled=false` to disable
+the finalizer explicitly; eventual finalization is not promised in that mode.
+Database migrations still run separately, never during API startup.
+
+API factories that test submission or Worker protocol behavior explicitly set
+`ExecutionFinalization:Enabled` to `false`. This includes factories derived for
+concurrency and restart tests. They must not rely on the test clock incidentally
+preventing expiration. Host finalization tests use a separate factory with defaults
+enabled (or an explicit setting when testing configuration).
+
+`FinalizationHostTests` exercises real PostgreSQL through the service host. Its
+TimeProvider supplies both UTC decision time and controlled one-shot delay timers.
+Tests await timer registration after scope disposal before advancing time; SQL
+commit and discovery gates coordinate races without long real sleeps. Each pass
+uses a fresh scope, while only the traversal cursor crosses passes. Shutdown tests
+cancel both a pending delay and an active transaction; restart rediscovers the
+rolled-back execution. Unrelated low-level concurrency matrices remain in the
+Domain, Application, Persistence and Worker API suites.
+
+Run the host group with the MTP filter:
+
+```powershell
+dotnet test --project tests/Synestra.Api.IntegrationTests --filter-method '*HostFinalization*'
+```
+
 ## Dependency and license audit
 
 CI performs three checks:
