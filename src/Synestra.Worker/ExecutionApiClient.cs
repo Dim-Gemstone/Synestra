@@ -1,5 +1,4 @@
 using System.Net;
-using System.Net.Http.Json;
 using System.Text.Json;
 
 namespace Synestra.Worker;
@@ -32,8 +31,7 @@ internal sealed partial class WorkerApiClient
 
     public async Task<DateTime> RenewAsync(Guid workerId, Guid sessionId, ClaimedExecution execution, CancellationToken token)
     {
-        using var request = LeaseRequest(HttpMethod.Post, workerId, sessionId, execution, "renewal");
-        var bytes = await SendAsync(request, HttpStatusCode.OK, token);
+        var bytes = await SendRecoverableAsync(() => LeaseRequest(HttpMethod.Post, workerId, sessionId, execution, "renewal"), token);
         return ReadExecutionResponse(bytes!, "invalid_renewal_response", root =>
         {
             RequireFields(root, "leaseId", "expiresAtUtc");
@@ -45,9 +43,14 @@ internal sealed partial class WorkerApiClient
     public async Task CompleteAsync(Guid workerId, Guid sessionId, ClaimedExecution execution,
         CompletionReport report, CancellationToken token)
     {
-        using var request = LeaseRequest(HttpMethod.Put, workerId, sessionId, execution, "completion");
-        request.Content = JsonContent.Create(report);
-        var bytes = await SendAsync(request, HttpStatusCode.OK, token);
+        var body = JsonSerializer.SerializeToUtf8Bytes(report, JsonSerializerOptions.Web);
+        var bytes = await SendRecoverableAsync(() =>
+        {
+            var request = LeaseRequest(HttpMethod.Put, workerId, sessionId, execution, "completion");
+            request.Content = new ByteArrayContent(body);
+            request.Content.Headers.ContentType = new("application/json") { CharSet = "utf-8" };
+            return request;
+        }, token);
         ReadExecutionResponse(bytes!, "invalid_completion_response", root =>
         {
             var dataField = report.Outcome == "succeeded" ? "result" : "error";

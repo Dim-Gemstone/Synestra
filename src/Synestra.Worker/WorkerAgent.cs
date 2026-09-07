@@ -87,8 +87,15 @@ internal sealed class WorkerAgent(
                 var report = await execute.ExecuteAsync(workerId, sessionId, claimed, running.Token);
                 if (report is null) continue;
                 // A frozen outcome may finish reporting during graceful shutdown.
-                reporting.Token.ThrowIfCancellationRequested();
-                try { await api.CompleteAsync(workerId, sessionId, claimed, report, reporting.Token); }
+                try
+                {
+                    reporting.Token.ThrowIfCancellationRequested();
+                    await api.CompleteAsync(workerId, sessionId, claimed, report, reporting.Token);
+                }
+                catch (OperationCanceledException) when (shutdownDeadline.IsCancellationRequested && !failure.IsCancellationRequested)
+                {
+                    throw new TimeoutException("Completion shutdown budget exhausted.");
+                }
                 catch (WorkerProtocolException exception) when (exception.Code == "attempt_already_finalized")
                 {
                     logger.LogInformation("Completion for {AttemptId} rejected after finalization.", claimed.AttemptId);

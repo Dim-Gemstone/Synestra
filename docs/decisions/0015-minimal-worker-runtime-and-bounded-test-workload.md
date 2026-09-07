@@ -9,10 +9,10 @@ automatic loss finalization. Slice 2E adds a real agent and one synthetic worklo
 without expanding ADR-0009's Client read contract. ADR-0005 and ADR-0008 retain
 the API boundary and workload-agnostic control plane.
 
-This ADR accepts the contract for all of Slice 2E. Units 2E.1 and 2E.2 implement
+This ADR accepts the contract for all of Slice 2E. Units 2E.1 through 2E.3 implement
 the executable, identity, registration, heartbeat, claim, bounded handler,
-renewal, completion and shutdown. Transport recovery/replay (2E.3) and Aspire
-wiring/process qualification (2E.4) remain unimplemented. Slices 2E and 2 remain
+renewal, completion, shutdown and bounded transport recovery/replay. Aspire
+wiring/process qualification (2E.4) remains unimplemented. Slices 2E and 2 remain
 incomplete.
 
 ## Decision
@@ -51,8 +51,8 @@ session stops rather than generating another session to displace its replacement
 ### Liveness and work acquisition
 
 Register first, send an initial heartbeat, then acquire work. Heartbeats continue
-independently of execution and renewal. Use the
-interval returned by registration. Wait that interval after each completed
+independently of execution and renewal. Use the interval returned by registration.
+Wait that interval after each completed
 heartbeat; no overlap, catch-up ticks or liveness from claim/renewal is assumed.
 Validate the registration's identity, desired state, UTC timestamps and positive
 timer-compatible heartbeat interval smaller than the offline threshold.
@@ -117,7 +117,7 @@ payload, tokens, reports or exception messages/objects.
 
 In 2E.1 and 2E.2, transport failures and invalid protocol responses stop the
 process with exit 1, without retry. Expected domain refusals follow the offline,
-lease-loss and finalization rules in this ADR. Unit 2E.3 introduces only these
+lease-loss and finalization rules in this ADR. Unit 2E.3 implements only these
 operation-specific recovery rules:
 
 - Repeat registration with the same WorkerId, SessionId and desired state.
@@ -129,6 +129,23 @@ operation-specific recovery rules:
 - An ambiguous claim (timeout, disconnect, 5xx or unreadable success response)
   stops the process without repeating claim. Its possibly committed execution
   is left to ADR-0014; there is no API for recovering the once-returned token.
+
+The concrete recovery path handles HTTP connection/transport exceptions, interrupted
+response streams, request timeouts and the existing API's `500 internal_error`
+Problem Details. Other statuses/codes, malformed or semantically invalid success
+responses, oversize bodies and domain refusals are not repeated. Unknown responses
+still fail closed. Claim and heartbeat remain single-attempt operations; this
+does not promise recovery from an outage that also interrupts heartbeat.
+
+Every repeat creates and disposes its own request/content. Completion serializes
+the already frozen report once and sends identical bytes and ownership headers on
+each attempt. Recovery uses monotonic elapsed time, including one-second waits;
+the third five-second request is shortened by the remaining fifteen-second budget.
+Renewal also retains the existing confirmed-lease/watchdog cancellation token.
+Only an acknowledged renewal extends the execution deadline. Shutdown cancels
+registration/renewal waits immediately; a pending completion retains only the
+remaining shutdown budget. Exhausting that report budget is fatal, even during
+shutdown. No session takeover, durable pending report or workload rerun is added.
 
 Session replacement stops the whole agent. While executing, lease_expired,
 lease_ownership_lost and lease_not_active stop the local handler and that lease's
@@ -154,7 +171,7 @@ In 2E.1 shutdown cancels heartbeat requests and idle waits without a drain phase
 Normal requested shutdown returns exit 0; fatal startup/protocol/transport failures
 return exit 1. Unacknowledged work follows existing server finalization semantics.
 
-A short API outage can be tolerated only under the later bounded recovery rules
+A short API outage can be tolerated only under these bounded recovery rules
 and confirmed lease budget. A longer outage stops local execution; the agent never
 assumes an extension. API restart preserves persisted ownership and report replay.
 Agent restart replaces session and cannot recover its previous in-memory execution.
@@ -164,8 +181,9 @@ of external effects. First committed terminal transition wins under ADR-0014.
 ### Verification, delivery and exclusions
 
 Use Worker unit/host tests with controlled time and HTTP gates; real API/PostgreSQL
-tests verify liveness, fencing, bounded execution and persisted reporting. Ordinary protocol
-factories explicitly disable the finalizer. Separate enabled-host tests verify loss
+tests verify liveness, fencing, bounded execution, persisted reporting and recovery
+after response loss following commit. Ordinary protocol factories explicitly
+disable the finalizer. Separate enabled-host tests verify loss
 and races. Preserve Testcontainers database-per-test isolation, the pinned image,
 MTP/xUnit conventions and existing PostgreSQL concurrency coverage. Time tests
 observe timer registration/operation completion before advancing clocks, without

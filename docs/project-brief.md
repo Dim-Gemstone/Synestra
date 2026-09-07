@@ -59,9 +59,9 @@ The current working topology distinguishes a worker agent from the process that
 executes a particular workload. A worker agent may coordinate with Synestra and
 supervise one or more execution processes. ADR-0015 selects a long-lived,
 capacity-one agent with in-process execution only for its built-in bounded test
-workload. Units 2E.1 and 2E.2 implement identity, liveness and bounded execution
-through claim, renewal and completion. Transport recovery and process qualification
-remain pending.
+workload. Units 2E.1 through 2E.3 implement identity, liveness and bounded execution
+through claim, renewal and completion, with bounded transport recovery and frozen
+report replay. Process qualification remains pending.
 General process isolation and other agent lifetime modes remain open.
 
 ### Synestra API / control plane

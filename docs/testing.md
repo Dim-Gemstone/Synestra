@@ -112,7 +112,7 @@ dotnet test --project tests/Synestra.Api.IntegrationTests --filter-method '*Host
 
 ## Minimal Worker and bounded execution
 
-ADR-0015 units 2E.1 and 2E.2 add `src/Synestra.Worker`. It registers, heartbeats,
+ADR-0015 units 2E.1 through 2E.3 add `src/Synestra.Worker`. It registers, heartbeats,
 claims one Job, executes `test.bounded-sum.v1`, renews ownership and reports completion.
 Start it against an already running API in the trusted/private development boundary:
 
@@ -134,8 +134,9 @@ state directory between processes. Corrupt identity fails without regeneration.
 Stop with Ctrl+C/SIGTERM; new claims stop and unfinished execution is cancelled
 locally without a synthetic outcome. An already frozen report may finish delivery
 within the ten-second shutdown budget. Owned tasks/timers are drained and identity
-ownership is released. Normal shutdown exits 0; fatal failures exit 1. This unit
-fails closed on transport errors without retry, report replay or re-registration.
+ownership is released. Normal shutdown exits 0; fatal failures exit 1. Registration,
+renewal and frozen completion support bounded transport recovery; exhausting a
+pending completion's shutdown budget also exits 1.
 Aspire wiring, definition bootstrap and full process qualification are later 2E units.
 
 The test harness explicitly prepares the `test.bounded-sum.v1` JobDefinition;
@@ -160,7 +161,18 @@ claim with a five-second margin. Only acknowledged expiration increases extend
 that deadline. Heartbeat proceeds independently; renewal and completion are
 serialized. Lease loss stops local work, and finalization rejection cannot overwrite
 the terminal state. Each HTTP operation, including its bounded response body,
-has a five-second timeout. Recovery after an interrupted request remains 2E.3.
+has a five-second timeout. Unit 2E.3 retries only registration, renewal and frozen
+completion: at most three total attempts, one-second waits and a fifteen-second
+monotonic budget, also constrained by lease/watchdog/shutdown deadlines. Each
+attempt owns a fresh request. Registration keeps the same identity/session and
+desired state; completion reuses identical serialized report bytes and credentials.
+
+Recovery handles connection failures, interrupted streams, timeouts and the
+existing `500 internal_error` response. Other statuses/codes, malformed success
+responses, size violations and domain conflicts are not repeated. Claim and
+heartbeat are single-attempt operations. A committed claim with a lost response
+cannot recover its token and is left to finalization. No pending report or session
+is persisted locally, and restarting Worker cannot adopt its old execution.
 
 Run focused tests:
 
@@ -168,6 +180,7 @@ Run focused tests:
 dotnet test --project tests/Synestra.Worker.Tests
 dotnet test --project tests/Synestra.Api.IntegrationTests --filter-method '*WorkerAgent*'
 dotnet test --project tests/Synestra.Api.IntegrationTests --filter-class '*WorkerExecutionTests'
+dotnet test --project tests/Synestra.Api.IntegrationTests --filter-method '*Recovery*'
 ```
 
 The controlled TimeProvider supplies UTC, monotonic timestamps and observable
@@ -182,10 +195,11 @@ Worker has no server project reference.
 | Worker unit/host | Identity, configuration, safe diagnostics, exact HTTP contracts, input/resource bounds, deterministic output, 40-second virtual execution with independent heartbeat/renewal, no prefetch, delayed claim, monotonic cutoff, fencing, fatal ambiguous requests, finalization conflicts, active shutdown and frozen-report drain |
 | API + PostgreSQL, finalizer disabled | Registration/liveness and session replacement; real bounded success/failure, persisted report/result/error and released lease; API restart between requests preserves session/ownership; Client GET retains seven fields |
 | API + PostgreSQL, finalizer enabled | Stopped unfinished Worker execution is eventually abandoned; finalizer wins before renewal or a frozen completion and its terminal outcome is preserved |
+| Worker recovery tests | Fresh requests with identical bodies/headers, three-attempt/15-second cap including waits, UTC regression, caller cancellation, acknowledged renewal recovery, completion replay without prefetch/renewal, definitive conflicts, successful shutdown replay and fatal shutdown exhaustion |
+| API + PostgreSQL recovery tests | Registration response lost after commit preserves identity/history and cannot displace replacement; committed success/failure replay across API restart and lease expiry preserves exact response and execution rows; unacknowledged renewal does not extend the local budget; ambiguous claim stops and Worker restart cannot adopt it; enabled-host finalization records unreported loss |
 
 The existing persistence/API suites retain concurrency, rollback and protocol
-precedence coverage. Outage recovery and ambiguous-completion replay belong to
-2E.3; separate-process and Aspire qualification belong to 2E.4.
+precedence coverage. Separate-process and Aspire qualification remain 2E.4.
 
 ## Dependency and license audit
 

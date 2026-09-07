@@ -94,12 +94,14 @@ public sealed class WorkerHostTests : IDisposable
     }
 
     [Fact]
-    public async Task RequestTimeoutStopsHostWithoutRetryAndDoesNotLogExceptionContents()
+    public async Task HeartbeatRequestTimeoutStopsHostWithoutRetryAndDoesNotLogExceptionContents()
     {
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var calls = 0;
-        using var handler = new Handler(async (_, token) =>
+        using var handler = new Handler(async (request, token) =>
         {
+            if (request.Method == HttpMethod.Put)
+                return Registration(request, await request.Content!.ReadFromJsonAsync<JsonElement>(token));
             Interlocked.Increment(ref calls);
             entered.TrySetResult();
             await Task.Delay(Timeout.InfiniteTimeSpan, token);
@@ -173,6 +175,11 @@ public sealed class WorkerHostTests : IDisposable
         var logs = new Logs();
         using var host = Build(handler, logs);
         await host.StartAsync(Token);
+        for (var attempt = 1; attempt < 3; attempt++)
+        {
+            await _clock.WaitForDelayAsync(TimeSpan.FromSeconds(1), Token);
+            _clock.Advance(TimeSpan.FromSeconds(1));
+        }
         await WaitForFailureAsync(host);
         Assert.DoesNotContain(logs.Entries, entry => entry.Message.Contains("private"));
         Assert.All(logs.Entries, entry => Assert.Null(entry.Exception));

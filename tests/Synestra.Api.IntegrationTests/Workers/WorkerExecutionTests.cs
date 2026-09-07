@@ -19,7 +19,7 @@ using Xunit;
 namespace Synestra.Api.IntegrationTests.Workers;
 
 [Collection(PostgreSqlCollection.Name)]
-public sealed class WorkerExecutionTests(PostgreSqlFixture postgres) : IAsyncLifetime
+public sealed partial class WorkerExecutionTests(PostgreSqlFixture postgres) : IAsyncLifetime
 {
     private readonly ControlledTimeProvider _clock = new();
     private readonly string _directory = Path.Combine(Path.GetTempPath(), "synestra-worker-execution-api-tests", Guid.NewGuid().ToString("N"));
@@ -259,6 +259,8 @@ public sealed class WorkerExecutionTests(PostgreSqlFixture postgres) : IAsyncLif
         private readonly ConcurrentQueue<string> _calls = new();
         public HttpMessageInvoker Target { get; set; } = target;
         public bool HoldCompletion { get; init; }
+        public Func<HttpRequestMessage, CancellationToken, Task>? BeforeSend { get; set; }
+        public Func<HttpRequestMessage, HttpResponseMessage, CancellationToken, Task>? AfterResponse { get; set; }
         public TaskCompletionSource CompletionEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource ReleaseCompletion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public ConcurrentQueue<JsonElement> Reports { get; } = new();
@@ -269,6 +271,7 @@ public sealed class WorkerExecutionTests(PostgreSqlFixture postgres) : IAsyncLif
             var operation = request.RequestUri!.Segments[^1];
             _calls.Enqueue(operation);
             Assert.StartsWith("/api/worker/", request.RequestUri.AbsolutePath);
+            if (BeforeSend is not null) await BeforeSend(request, cancellationToken);
             if (operation == "completion")
             {
                 Reports.Enqueue(await request.Content!.ReadFromJsonAsync<JsonElement>(cancellationToken));
@@ -277,6 +280,8 @@ public sealed class WorkerExecutionTests(PostgreSqlFixture postgres) : IAsyncLif
             }
             var response = await Target.SendAsync(request, cancellationToken);
             Responses.Enqueue((operation, response.StatusCode));
+            try { if (AfterResponse is not null) await AfterResponse(request, response, cancellationToken); }
+            catch { response.Dispose(); throw; }
             return response;
         }
     }

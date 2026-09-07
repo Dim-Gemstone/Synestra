@@ -63,12 +63,14 @@ This document is not a replacement for ADRs. Important accepted decisions should
 ---
 
 ADR-0015 accepts the minimal Worker runtime and bounded test workload. Units 2E.1
-and 2E.2 implement identity/liveness and capacity-one execution of
+through 2E.3 implement identity/liveness and capacity-one execution of
 `test.bounded-sum.v1`, including claim, renewal, frozen completion and bounded
 shutdown. The Worker uses HTTP only and has no control-plane project/database
 dependency. Tests verify result/error persistence, lease release, API restart and
-finalizer rejection without outcome overwrite. Transport recovery/replay and
-process qualification remain pending. Slices 2E and 2 remain incomplete.
+finalizer rejection without outcome overwrite. Bounded transport recovery preserves
+registration identity, confirmed lease budgets and frozen reports, including replay
+after committed response loss and API restart. Process qualification remains
+pending. Slices 2E and 2 remain incomplete.
 
 ## Proposed
 
@@ -215,9 +217,9 @@ failure isolation and safe restart/reset. Unit 2D.3 runs that sweep automaticall
 in enabled API hosts, including after restart and across concurrent instances.
 Slice 2 remains incomplete.
 
-Slice 2E is in progress: ADR-0015 units 2E.1 and 2E.2 implement the minimal Worker
-through bounded workload execution, lease maintenance and persisted completion.
-Next is 2E.3 bounded transport recovery/replay, then 2E.4 process qualification.
+Slice 2E is in progress: ADR-0015 units 2E.1 through 2E.3 implement the minimal Worker
+through bounded workload execution, lease maintenance, persisted completion and
+bounded transport recovery/replay. Next is 2E.4 local orchestration/process qualification.
 Slice 2F adds client-visible terminal outcome/result; its read expansion remains
 absent. A minimally useful execution product still needs those increments, a
 concrete workload and the verified client submit-to-result path with loss behavior.

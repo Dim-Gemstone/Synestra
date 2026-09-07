@@ -10,7 +10,7 @@ using Xunit;
 
 namespace Synestra.Worker.Tests;
 
-public sealed class WorkerExecutionTests : IDisposable
+public sealed partial class WorkerExecutionTests : IDisposable
 {
     private readonly ControlledTimeProvider _clock = new();
     private readonly string _directory = Path.Combine(Path.GetTempPath(), "synestra-execution-tests", Guid.NewGuid().ToString("N"));
@@ -189,7 +189,7 @@ public sealed class WorkerExecutionTests : IDisposable
     [InlineData("claims")]
     [InlineData("renewal")]
     [InlineData("completion")]
-    public async Task AmbiguousOperationStopsAgentWithoutRepeatingIt(string operation)
+    public async Task AmbiguousClaimIsNotRepeatedAndRecoverableOperationsStopAfterThreeAttempts(string operation)
     {
         using var host = Host(ExecutionTestProtocol.Execution(_clock, operation == "completion" ? 0 : 40000), (current, _, _) =>
             current == operation ? throw new HttpRequestException("private body token") : Task.FromResult<HttpResponseMessage?>(null));
@@ -199,8 +199,15 @@ public sealed class WorkerExecutionTests : IDisposable
             await _clock.WaitForTimersAsync(Token, Seconds(10), Seconds(10));
             _clock.Advance(Seconds(10));
         }
+        if (operation != "claims")
+            for (var attempt = 1; attempt < 3; attempt++)
+            {
+                await _clock.WaitForDelayAsync(Seconds(1), Token);
+                Assert.Equal(1, Count("claims"));
+                _clock.Advance(Seconds(1));
+            }
         await FailureAsync(host);
-        Assert.Equal(1, Count(operation));
+        Assert.Equal(operation == "claims" ? 1 : 3, Count(operation));
         Assert.Equal(1, Count("claims"));
         Assert.Equal(1, Count("registration"));
     }
@@ -247,7 +254,7 @@ public sealed class WorkerExecutionTests : IDisposable
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task FrozenReportDrainsOnShutdownWithinHttpDeadline(bool timeout)
+    public async Task FrozenReportDrainsOrExhaustsTotalShutdownBudget(bool timeout)
     {
         var arrived = Signal();
         var release = Signal();
@@ -267,11 +274,18 @@ public sealed class WorkerExecutionTests : IDisposable
         var stopped = host.StopAsync(Token);
         Assert.False(requestToken.IsCancellationRequested);
         Assert.False(stopped.IsCompleted);
-        if (timeout) _clock.Advance(Seconds(5));
+        if (timeout)
+        {
+            _clock.Advance(Seconds(5));
+            await _clock.WaitForTimersAsync(Token, Seconds(1));
+            _clock.Advance(Seconds(1));
+            await _clock.WaitForTimersAsync(Token, Seconds(5), Seconds(4));
+            _clock.Advance(Seconds(4));
+        }
         else release.TrySetResult();
         await WaitAsync(stopped);
         Assert.Equal(timeout ? 1 : 0, host.Services.GetRequiredService<WorkerExitStatus>().ExitCode);
-        Assert.Equal(1, Count("completion"));
+        Assert.Equal(timeout ? 2 : 1, Count("completion"));
         Assert.Equal(1, Count("claims"));
         Assert.Equal(0, _clock.ActiveTimers);
     }

@@ -92,10 +92,10 @@ public sealed class WorkerApiClientTests
         });
         using var http = new HttpClient(handler) { BaseAddress = new Uri("http://localhost"), Timeout = Timeout.InfiniteTimeSpan };
         var api = new WorkerApiClient(http, clock);
-        var registration = api.RegisterAsync(Guid.CreateVersion7(), Guid.CreateVersion7(), "worker", Token);
+        var claim = api.ClaimAsync(Guid.CreateVersion7(), Guid.CreateVersion7(), Token);
         await entered.Task.WaitAsync(TimeSpan.FromSeconds(10), Token);
         clock.Advance(TimeSpan.FromSeconds(5));
-        await Assert.ThrowsAsync<TimeoutException>(() => registration);
+        await Assert.ThrowsAsync<TimeoutException>(() => claim);
         Assert.Equal(0, clock.ActiveTimers);
     }
 

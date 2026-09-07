@@ -10,11 +10,10 @@ internal sealed partial class WorkerApiClient(HttpClient http, TimeProvider time
 
     public async Task<TimeSpan> RegisterAsync(Guid workerId, Guid sessionId, string name, CancellationToken token)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Put, $"/api/worker/workers/{workerId:D}/registration")
+        var bytes = await SendRecoverableAsync(() => new HttpRequestMessage(HttpMethod.Put, $"/api/worker/workers/{workerId:D}/registration")
         {
             Content = JsonContent.Create(new { sessionId, name, capacity = 1, supportedTypes = new[] { WorkerOptions.SupportedType } })
-        };
-        var bytes = await SendAsync(request, HttpStatusCode.OK, token);
+        }, token);
         try
         {
             using var document = JsonDocument.Parse(bytes!, new JsonDocumentOptions { MaxDepth = 4 });

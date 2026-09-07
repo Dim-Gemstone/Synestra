@@ -32,9 +32,11 @@ See `job-lifecycle.md` for confirmed and undecided lifecycle behavior.
 
 ADR-0015's minimal executable persists WorkerId in an explicit local state
 directory and holds exclusive ownership of that directory until shutdown. Every
-launch creates a fresh SessionId. Units 2E.1 and 2E.2 register, heartbeat and execute
-the bounded in-process handler through claim/renewal/reporting. Transport recovery
-is deferred to 2E.3. This limited isolation decision does not select a browser
+launch creates a fresh SessionId. Units 2E.1 through 2E.3 register, heartbeat and
+execute the bounded handler through claim/renewal/reporting, with bounded repeats
+of registration, renewal and frozen completion after transport failures. Claim is
+not repeated after ambiguity, and agent restart cannot adopt old execution or
+recover in-memory reports. This limited isolation decision does not select a browser
 process model.
 
 ## Worker registration terminology
@@ -113,7 +115,7 @@ This is a server background process, not a Worker agent. Restart discards the
 traversal cursor and rediscovers persisted work; multiple hosts coordinate through
 the same row locks. Eventual recording requires an enabled host, available database
 and locks that eventually release. Disabled deployments provide no such promise.
-Slice 2D is implemented; Slice 2 still needs Worker transport recovery/process
+Slice 2D is implemented; Slice 2 still needs Worker orchestration/process
 qualification and Client outcome/result.
 
 ## Scenario execution terminology

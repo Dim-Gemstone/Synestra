@@ -236,9 +236,13 @@ timers bound execution and shutdown; lease loss stops local work without a
 synthetic outcome. Worker and real API/PostgreSQL tests cover execution, result
 persistence, lease release, API restart and enabled-host finalization.
 
-Bounded transport recovery/replay and local Aspire/process qualification remain
-to be implemented. Slice 2E and Slice 2 remain incomplete; the next increment is
-bounded transport recovery within 2E.
+Bounded recovery repeats only registration, renewal and frozen completion after
+recognized transport failures. It preserves identity/report data, caps attempts
+and elapsed time, and never repeats an ambiguous claim or adopts an old execution.
+Real API/PostgreSQL tests verify response loss after commit, completion replay
+across restart/expiry, session fencing and loss after an unacknowledged renewal.
+Local Aspire/process qualification remains to be implemented. Slice 2E and Slice 2
+remain incomplete; the next increment is local orchestration/process qualification.
 
 ### Slice 2F — Client-visible terminal outcome and small result (proposed)
 
@@ -286,10 +290,10 @@ constraint or speculative retry/workflow tables.
 Currently submission, opt-in idempotent replay, retrieval by ID, Worker
 registration/liveness, atomic claim, renewal, idempotent execution reporting and
 automatic loss finalization with a bounded discovery sweep are implemented.
-The minimal Worker executes a bounded synthetic workload through HTTP. Transport
-recovery, process qualification, client-visible terminal outcome/result and control
+The minimal Worker executes a bounded synthetic workload through HTTP with bounded
+transport recovery. Process qualification, client-visible terminal outcome/result and control
 remain absent. Complete Slice 2E, followed by 2F as described above.
-A minimally useful execution product still needs those execution qualifications,
+A minimally useful execution product still needs process qualification,
 client-visible outcomes, and a concrete workload. Long-running scenario control
 follows in Slice 3; automatic retries, pause, and Workflow are not prerequisites
 for the first execution slice.
