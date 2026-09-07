@@ -95,7 +95,7 @@ public sealed class WorkerApiClientTests
         var registration = api.RegisterAsync(Guid.CreateVersion7(), Guid.CreateVersion7(), "worker", Token);
         await entered.Task.WaitAsync(TimeSpan.FromSeconds(10), Token);
         clock.Advance(TimeSpan.FromSeconds(5));
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => registration);
+        await Assert.ThrowsAsync<TimeoutException>(() => registration);
         Assert.Equal(0, clock.ActiveTimers);
     }
 

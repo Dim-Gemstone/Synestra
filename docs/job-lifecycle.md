@@ -148,4 +148,8 @@ ExecutionFinalization configuration (see `testing.md`). Eventual loss recording
 requires an enabled running host, available database and locks that eventually
 release; no exact deadline is promised during outages or contention. Disabled
 deployments do not promise eventual finalization. Slice 2D is implemented, while
-Slice 2 still lacks Worker workload execution and client-visible outcome/result.
+Slice 2 still lacks Worker transport recovery/process qualification and
+client-visible outcome/result. ADR-0015 unit 2E.2 now executes one built-in bounded
+test workload through claim, renewal and completion. Local shutdown or lease loss
+cancels its unfinished handler without inventing a domain outcome; the enabled
+finalizer remains responsible for recording unreported lost execution.

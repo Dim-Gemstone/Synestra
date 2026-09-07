@@ -229,14 +229,16 @@ Slice 2 remains incomplete; the next increment is Slice 2E.
 
 ADR-0015 accepts a long-lived capacity-one agent, stable local identity, a bounded
 in-process test workload, lease maintenance, shutdown and transport failure rules.
-The executable now persists WorkerId, creates a fresh process session, registers
-and heartbeats through HTTP, uses controlled timers and stops on fencing/failure.
-Worker unit/host and real API/PostgreSQL tests cover identity, liveness and restart.
+The executable persists WorkerId, creates a fresh process session, registers and
+heartbeats through HTTP. It claims one Job, executes `test.bounded-sum.v1`, renews
+confirmed ownership and reports success or bounded input failure. Controlled
+timers bound execution and shutdown; lease loss stops local work without a
+synthetic outcome. Worker and real API/PostgreSQL tests cover execution, result
+persistence, lease release, API restart and enabled-host finalization.
 
-Claim, the bounded handler, renewal/completion, bounded transport recovery and
-local Aspire/process qualification remain to be implemented. The agent currently
-advertises the accepted test type but never claims or executes work. Slice 2E and
-Slice 2 remain incomplete; the next increment is bounded execution within 2E.
+Bounded transport recovery/replay and local Aspire/process qualification remain
+to be implemented. Slice 2E and Slice 2 remain incomplete; the next increment is
+bounded transport recovery within 2E.
 
 ### Slice 2F — Client-visible terminal outcome and small result (proposed)
 
@@ -284,9 +286,10 @@ constraint or speculative retry/workflow tables.
 Currently submission, opt-in idempotent replay, retrieval by ID, Worker
 registration/liveness, atomic claim, renewal, idempotent execution reporting and
 automatic loss finalization with a bounded discovery sweep are implemented.
-Actual workload execution, client-visible terminal outcome/result and control
-remain absent. Continue with Slice 2E, followed by 2F as described above.
-A minimally useful execution product still needs Worker execution,
+The minimal Worker executes a bounded synthetic workload through HTTP. Transport
+recovery, process qualification, client-visible terminal outcome/result and control
+remain absent. Complete Slice 2E, followed by 2F as described above.
+A minimally useful execution product still needs those execution qualifications,
 client-visible outcomes, and a concrete workload. Long-running scenario control
 follows in Slice 3; automatic retries, pause, and Workflow are not prerequisites
 for the first execution slice.

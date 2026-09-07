@@ -27,6 +27,8 @@ public static class WorkerHost
             Timeout = Timeout.InfiniteTimeSpan
         });
         builder.Services.AddSingleton<WorkerApiClient>();
+        builder.Services.AddSingleton<BoundedSumWorkload>();
+        builder.Services.AddSingleton<ExecuteClaimedWork>();
         builder.Services.AddHostedService<WorkerAgent>();
         return builder;
     }

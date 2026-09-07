@@ -133,7 +133,7 @@ public sealed class WorkerAgentTests(PostgreSqlFixture postgres) : IAsyncLifetim
         Assert.Equal(session, worker.SessionId);
         Assert.Equal(_clock.GetUtcNow().UtcDateTime, worker.LastSeenAtUtc);
     }
-    private Task TickCompletedAsync() => _clock.WaitForDelayAsync(TimeSpan.FromSeconds(10), Token);
+    private Task TickCompletedAsync() => _clock.WaitForTimersAsync(Token, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(1));
     private WebApplicationFactory<Program> Factory() => new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         builder.UseSetting("ConnectionStrings:synestra", _database.ConnectionString)
             .UseSetting("ExecutionFinalization:Enabled", "false")
@@ -153,7 +153,7 @@ public sealed class WorkerAgentTests(PostgreSqlFixture postgres) : IAsyncLifetim
         public int Registrations { get; private set; }
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            Assert.Contains(request.RequestUri!.Segments[^1], new[] { "registration", "heartbeat" });
+            Assert.Contains(request.RequestUri!.Segments[^1], new[] { "registration", "heartbeat", "claims" });
             if (request.Method == HttpMethod.Put) Registrations++;
             return Target.SendAsync(request, cancellationToken);
         }

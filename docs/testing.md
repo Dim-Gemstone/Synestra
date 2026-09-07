@@ -110,10 +110,10 @@ Run the host group with the MTP filter:
 dotnet test --project tests/Synestra.Api.IntegrationTests --filter-method '*HostFinalization*'
 ```
 
-## Minimal Worker identity and liveness
+## Minimal Worker and bounded execution
 
-ADR-0015 unit 2E.1 adds `src/Synestra.Worker`. It registers and heartbeats only;
-it advertises capacity 1 and `test.bounded-sum.v1` but never claims or executes.
+ADR-0015 units 2E.1 and 2E.2 add `src/Synestra.Worker`. It registers, heartbeats,
+claims one Job, executes `test.bounded-sum.v1`, renews ownership and reports completion.
 Start it against an already running API in the trusted/private development boundary:
 
 ```powershell
@@ -131,26 +131,61 @@ trusted local test endpoint. Worker does not need PostgreSQL credentials.
 The Worker creates `worker-id` once, flushes it before registration, and holds
 `worker.lock` exclusively until exit. Do not copy a live identity or share its
 state directory between processes. Corrupt identity fails without regeneration.
-Stop with Ctrl+C/SIGTERM; pending requests/timers are cancelled and identity
+Stop with Ctrl+C/SIGTERM; new claims stop and unfinished execution is cancelled
+locally without a synthetic outcome. An already frozen report may finish delivery
+within the ten-second shutdown budget. Owned tasks/timers are drained and identity
 ownership is released. Normal shutdown exits 0; fatal failures exit 1. This unit
-fails closed on transport errors without retry or automatic re-registration.
+fails closed on transport errors without retry, report replay or re-registration.
 Aspire wiring, definition bootstrap and full process qualification are later 2E units.
+
+The test harness explicitly prepares the `test.bounded-sum.v1` JobDefinition;
+Worker never seeds definitions or migrates storage. Submit a Job using the existing
+Client API and this payload after preparing that definition:
+
+```json
+{"type":"test.bounded-sum.v1","payload":{"values":[1,2,-3,4],"durationMs":40000}}
+```
+
+The payload has exactly two fields: 1–1024 integer values in [-1000000,1000000]
+and integer durationMs in [0,60000]. Equivalent JSON integer spellings are accepted;
+fractions, numeric underflow/rounding, extra fields and invalid bounds are rejected.
+The handler awaits through TimeProvider and produces exactly `{"count":4,"sum":4}`
+for this example. Invalid payload produces a fixed `invalid_workload_input` failure.
+Execution uses bounded memory and a 65-second watchdog, with no external I/O.
+Result/error is persisted through the Worker API; the seven-field Client GET
+response still exposes only its existing status and metadata.
+
+Renewal uses the received lease duration and a monotonic deadline anchored before
+claim with a five-second margin. Only acknowledged expiration increases extend
+that deadline. Heartbeat proceeds independently; renewal and completion are
+serialized. Lease loss stops local work, and finalization rejection cannot overwrite
+the terminal state. Each HTTP operation, including its bounded response body,
+has a five-second timeout. Recovery after an interrupted request remains 2E.3.
 
 Run focused tests:
 
 ```powershell
 dotnet test --project tests/Synestra.Worker.Tests
 dotnet test --project tests/Synestra.Api.IntegrationTests --filter-method '*WorkerAgent*'
+dotnet test --project tests/Synestra.Api.IntegrationTests --filter-class '*WorkerExecutionTests'
 ```
 
-Worker tests cover identity exclusivity, validation, server heartbeat cadence,
-request deadlines, idle/in-flight shutdown and safe diagnostics. The controlled
-TimeProvider supplies UTC, monotonic timestamps and observable one-shot timers;
-tests wait for scheduling/HTTP gates before advancing it. API tests run the real
-Worker host over TestServer HTTP against a fresh migrated PostgreSQL database,
-explicitly disable finalization, and verify liveness across API restart, Worker
-restart and external session replacement without creating Jobs/attempts/leases.
-The test harness alone accesses PostgreSQL. Worker has no server project reference.
+The controlled TimeProvider supplies UTC, monotonic timestamps and observable
+one-shot timers. Tests observe all relevant timers/HTTP gates before advancing
+time, including multiple timers with the same remaining duration. No long real
+sleeps are used. API tests run the real Worker host over TestServer HTTP against
+a fresh migrated PostgreSQL database. The test harness alone accesses PostgreSQL;
+Worker has no server project reference.
+
+| Layer | Verified behavior |
+| --- | --- |
+| Worker unit/host | Identity, configuration, safe diagnostics, exact HTTP contracts, input/resource bounds, deterministic output, 40-second virtual execution with independent heartbeat/renewal, no prefetch, delayed claim, monotonic cutoff, fencing, fatal ambiguous requests, finalization conflicts, active shutdown and frozen-report drain |
+| API + PostgreSQL, finalizer disabled | Registration/liveness and session replacement; real bounded success/failure, persisted report/result/error and released lease; API restart between requests preserves session/ownership; Client GET retains seven fields |
+| API + PostgreSQL, finalizer enabled | Stopped unfinished Worker execution is eventually abandoned; finalizer wins before renewal or a frozen completion and its terminal outcome is preserved |
+
+The existing persistence/API suites retain concurrency, rollback and protocol
+precedence coverage. Outage recovery and ambiguous-completion replay belong to
+2E.3; separate-process and Aspire qualification belong to 2E.4.
 
 ## Dependency and license audit
 

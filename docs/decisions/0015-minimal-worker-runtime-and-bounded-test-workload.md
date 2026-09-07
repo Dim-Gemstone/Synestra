@@ -9,10 +9,11 @@ automatic loss finalization. Slice 2E adds a real agent and one synthetic worklo
 without expanding ADR-0009's Client read contract. ADR-0005 and ADR-0008 retain
 the API boundary and workload-agnostic control plane.
 
-This ADR accepts the contract for all of Slice 2E. Only unit 2E.1 is implemented:
-the executable, identity, registration, heartbeat and idle shutdown. Claim,
-handler execution, renewal, completion, transport retries and Aspire wiring are
-not implemented by this unit. Slices 2E and 2 remain incomplete.
+This ADR accepts the contract for all of Slice 2E. Units 2E.1 and 2E.2 implement
+the executable, identity, registration, heartbeat, claim, bounded handler,
+renewal, completion and shutdown. Transport recovery/replay (2E.3) and Aspire
+wiring/process qualification (2E.4) remain unimplemented. Slices 2E and 2 remain
+incomplete.
 
 ## Decision
 
@@ -49,8 +50,8 @@ session stops rather than generating another session to displace its replacement
 
 ### Liveness and work acquisition
 
-Register first, send an initial heartbeat, then acquire work when execution is
-implemented. Heartbeats continue independently of execution and renewal. Use the
+Register first, send an initial heartbeat, then acquire work. Heartbeats continue
+independently of execution and renewal. Use the
 interval returned by registration. Wait that interval after each completed
 heartbeat; no overlap, catch-up ticks or liveness from claim/renewal is assumed.
 Validate the registration's identity, desired state, UTC timestamps and positive
@@ -62,7 +63,7 @@ before another claim. An acknowledged completion and local handler termination
 are required before the next normal claim; a lost execution must first stop
 locally. Do not reclaim or re-execute the old Job.
 
-### Bounded deterministic workload (2E.2, not implemented in 2E.1)
+### Bounded deterministic workload (implemented in 2E.2)
 
 The in-process handler accepts exactly `values` and `durationMs`. Values is an
 array of 1 through 1024 integers in [-1000000, 1000000]; durationMs is an integer
@@ -85,7 +86,7 @@ It is not hard OS isolation or a real-time termination guarantee for arbitrary
 code. Browser execution and separate execution-process supervision require later
 decisions. No workload-specific concepts enter Domain or persistence.
 
-### Lease maintenance (2E.2, not implemented in 2E.1)
+### Lease maintenance (implemented in 2E.2)
 
 Use injectable TimeProvider for timers and monotonic elapsed time. Initial lease
 duration comes from expiresAtUtc minus acquiredAtUtc, not a hardcoded 30 seconds.
@@ -114,8 +115,10 @@ cookies, generic retries or the shared ServiceDefaults resilience handler. Log
 identifiers, known protocol codes and exception types only; never response contents,
 payload, tokens, reports or exception messages/objects.
 
-In 2E.1 and 2E.2, any transport/protocol failure stops the process with exit 1.
-Unit 2E.3 introduces only these operation-specific recovery rules:
+In 2E.1 and 2E.2, transport failures and invalid protocol responses stop the
+process with exit 1, without retry. Expected domain refusals follow the offline,
+lease-loss and finalization rules in this ADR. Unit 2E.3 introduces only these
+operation-specific recovery rules:
 
 - Repeat registration with the same WorkerId, SessionId and desired state.
 - Repeat renewal only within the last confirmed ownership budget.
@@ -161,7 +164,7 @@ of external effects. First committed terminal transition wins under ADR-0014.
 ### Verification, delivery and exclusions
 
 Use Worker unit/host tests with controlled time and HTTP gates; real API/PostgreSQL
-tests verify liveness, fencing and later execution/reporting. Ordinary protocol
+tests verify liveness, fencing, bounded execution and persisted reporting. Ordinary protocol
 factories explicitly disable the finalizer. Separate enabled-host tests verify loss
 and races. Preserve Testcontainers database-per-test isolation, the pinned image,
 MTP/xUnit conventions and existing PostgreSQL concurrency coverage. Time tests

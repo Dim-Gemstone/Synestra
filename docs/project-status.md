@@ -62,12 +62,13 @@ This document is not a replacement for ADRs. Important accepted decisions should
 
 ---
 
-ADR-0015 accepts the minimal Worker runtime and bounded test workload. Unit 2E.1
-implements the long-lived executable, persistent local identity, per-launch
-session, registration and heartbeat with controlled timing and graceful shutdown.
-The Worker uses HTTP only and has no control-plane project/database dependency.
-Its advertised type is `test.bounded-sum.v1`, capacity is one, and it does not
-claim or execute work yet. Slices 2E and 2 remain incomplete.
+ADR-0015 accepts the minimal Worker runtime and bounded test workload. Units 2E.1
+and 2E.2 implement identity/liveness and capacity-one execution of
+`test.bounded-sum.v1`, including claim, renewal, frozen completion and bounded
+shutdown. The Worker uses HTTP only and has no control-plane project/database
+dependency. Tests verify result/error persistence, lease release, API restart and
+finalizer rejection without outcome overwrite. Transport recovery/replay and
+process qualification remain pending. Slices 2E and 2 remain incomplete.
 
 ## Proposed
 
@@ -79,7 +80,7 @@ The following ideas are considered plausible directions but are not yet binding 
 | Retry with backoff | Retries are expected, but retry policy, timing, classification, and ownership are not yet defined. |
 | Live-process pause | Candidate for a later feature; resource, lease, and capacity semantics are undefined. Durable resume is a separate open question. |
 | A worker agent supervises separate execution processes | This fits dynamic workloads and CEF process trees. ADR-0015 selects in-process execution only for its bounded built-in test handler; general isolation is still open. |
-| Worker wakeup/delivery beyond 2E | ADR-0015 accepts simple polling for the minimal agent; it is not implemented in 2E.1. Long-polling, streaming, push and broker notifications remain undecided. |
+| Worker wakeup/delivery beyond 2E | ADR-0015 implements simple polling for the minimal agent. Long-polling, streaming, push and broker notifications remain undecided. |
 | Worker/browser pools and groups | These originate from the earlier browser-management concept and may be useful later, but they are not required by the current core. |
 | Remote browser access | A potential future capability rather than a current core requirement. |
 | Headless CEF workers | A plausible worker mode, but rendering and interactive access requirements remain unresolved. |
@@ -214,13 +215,12 @@ failure isolation and safe restart/reset. Unit 2D.3 runs that sweep automaticall
 in enabled API hosts, including after restart and across concurrent instances.
 Slice 2 remains incomplete.
 
-Slice 2E is in progress: ADR-0015 is accepted and unit 2E.1 implements the minimal
-Worker executable's identity, registration and heartbeat. Next is 2E.2 bounded
-execution with lease maintenance and completion, followed by transport recovery
-and process qualification. Slice 2F adds client-visible terminal outcome/result.
-Actual workload execution and Client API outcome/result expansion remain absent.
-A minimally useful execution product still needs those increments and the
-verified submit-to-result path with defined loss behavior.
+Slice 2E is in progress: ADR-0015 units 2E.1 and 2E.2 implement the minimal Worker
+through bounded workload execution, lease maintenance and persisted completion.
+Next is 2E.3 bounded transport recovery/replay, then 2E.4 process qualification.
+Slice 2F adds client-visible terminal outcome/result; its read expansion remains
+absent. A minimally useful execution product still needs those increments, a
+concrete workload and the verified client submit-to-result path with loss behavior.
 
 The current working interpretation is:
 

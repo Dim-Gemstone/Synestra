@@ -24,6 +24,7 @@ public sealed class WorkerHostTests : IDisposable
         var heartbeatCount = 0;
         using var handler = new Handler(async (request, token) =>
         {
+            if (request.RequestUri!.Segments[^1] == "claims") return new(HttpStatusCode.NoContent);
             if (request.Method == HttpMethod.Put)
             {
                 var body = await request.Content!.ReadFromJsonAsync<JsonElement>(token);

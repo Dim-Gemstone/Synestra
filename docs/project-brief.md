@@ -59,7 +59,9 @@ The current working topology distinguishes a worker agent from the process that
 executes a particular workload. A worker agent may coordinate with Synestra and
 supervise one or more execution processes. ADR-0015 selects a long-lived,
 capacity-one agent with in-process execution only for its built-in bounded test
-workload. Unit 2E.1 implements the agent's identity and liveness, not execution.
+workload. Units 2E.1 and 2E.2 implement identity, liveness and bounded execution
+through claim, renewal and completion. Transport recovery and process qualification
+remain pending.
 General process isolation and other agent lifetime modes remain open.
 
 ### Synestra API / control plane
@@ -91,8 +93,8 @@ Frontend / Product Client
 ```
 
 PostgreSQL is internal to the control-plane boundary. ADR-0015 selects simple
-Worker API polling for the minimal agent; unit 2E.1 does not implement claiming
-yet. Other wakeup or delivery mechanisms remain open for later requirements.
+Worker API polling for the minimal agent, implemented in 2E.2. Other wakeup or
+delivery mechanisms remain open for later requirements.
 
 ## Core principles
 

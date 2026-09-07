@@ -6,7 +6,8 @@ internal sealed class ControlledTimeProvider : TimeProvider
 {
     private readonly object _sync = new();
     private readonly List<ControlledTimer> _timers = [];
-    private readonly Channel<TimeSpan> _scheduled = Channel.CreateUnbounded<TimeSpan>();
+    private readonly Dictionary<TimeSpan, Channel<bool>> _scheduled = [];
+    private TaskCompletionSource _changed = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private DateTimeOffset _now = new(2026, 9, 7, 12, 0, 0, TimeSpan.Zero);
     private long _timestamp;
 
@@ -17,7 +18,38 @@ internal sealed class ControlledTimeProvider : TimeProvider
 
     public async Task WaitForDelayAsync(TimeSpan duration, CancellationToken token)
     {
-        while (await _scheduled.Reader.ReadAsync(token).AsTask().WaitAsync(TimeSpan.FromSeconds(10), token) != duration) { }
+        Channel<bool> channel;
+        lock (_sync) channel = Scheduled(duration);
+        await channel.Reader.ReadAsync(token).AsTask().WaitAsync(TimeSpan.FromSeconds(10), token);
+    }
+
+    public async Task WaitForTimersAsync(CancellationToken token, params TimeSpan[] remaining)
+    {
+        while (true)
+        {
+            Task changed;
+            lock (_sync)
+            {
+                if (remaining.GroupBy(value => value).All(group =>
+                    _timers.Count(timer => timer.DueAt == _timestamp + group.Key.Ticks) >= group.Count())) return;
+                changed = _changed.Task;
+            }
+            await changed.WaitAsync(TimeSpan.FromSeconds(10), token);
+        }
+    }
+
+    public void ShiftUtc(TimeSpan duration) { lock (_sync) _now += duration; }
+
+    private Channel<bool> Scheduled(TimeSpan duration)
+    {
+        if (!_scheduled.TryGetValue(duration, out var channel))
+            _scheduled.Add(duration, channel = Channel.CreateUnbounded<bool>());
+        return channel;
+    }
+    private void Changed()
+    {
+        _changed.TrySetResult();
+        _changed = new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
 
     public void Advance(TimeSpan duration)
@@ -29,6 +61,7 @@ internal sealed class ControlledTimeProvider : TimeProvider
             _timestamp += duration.Ticks;
             due = _timers.Where(timer => timer.DueAt <= _timestamp).ToList();
             foreach (var timer in due) timer.DueAt = long.MaxValue;
+            Changed();
         }
         foreach (var timer in due) timer.Fire();
     }
@@ -57,11 +90,12 @@ internal sealed class ControlledTimeProvider : TimeProvider
             {
                 if (_disposed) return false;
                 DueAt = dueTime == Timeout.InfiniteTimeSpan ? long.MaxValue : owner._timestamp + dueTime.Ticks;
-                owner._scheduled.Writer.TryWrite(dueTime);
+                owner.Scheduled(dueTime).Writer.TryWrite(true);
+                owner.Changed();
                 return true;
             }
         }
-        public void Dispose() { lock (owner._sync) { _disposed = true; owner._timers.Remove(this); } }
+        public void Dispose() { lock (owner._sync) { _disposed = true; owner._timers.Remove(this); owner.Changed(); } }
         public ValueTask DisposeAsync() { Dispose(); return ValueTask.CompletedTask; }
     }
 }

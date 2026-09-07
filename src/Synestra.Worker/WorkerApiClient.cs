@@ -4,7 +4,7 @@ using System.Text.Json;
 
 namespace Synestra.Worker;
 
-internal sealed class WorkerApiClient(HttpClient http, TimeProvider timeProvider)
+internal sealed partial class WorkerApiClient(HttpClient http, TimeProvider timeProvider)
 {
     private const int MaximumResponseBytes = 1024 * 1024;
 
@@ -17,7 +17,7 @@ internal sealed class WorkerApiClient(HttpClient http, TimeProvider timeProvider
         var bytes = await SendAsync(request, HttpStatusCode.OK, token);
         try
         {
-            using var document = JsonDocument.Parse(bytes, new JsonDocumentOptions { MaxDepth = 4 });
+            using var document = JsonDocument.Parse(bytes!, new JsonDocumentOptions { MaxDepth = 4 });
             var root = document.RootElement;
             var fields = root.EnumerateObject().Select(property => property.Name).ToArray();
             string[] expected = ["workerId", "sessionId", "name", "capacity", "supportedTypes", "registeredAtUtc",
@@ -51,23 +51,34 @@ internal sealed class WorkerApiClient(HttpClient http, TimeProvider timeProvider
         await SendAsync(request, HttpStatusCode.NoContent, token);
     }
 
-    private async Task<byte[]> SendAsync(HttpRequestMessage request, HttpStatusCode expected, CancellationToken token)
+    private async Task<byte[]?> SendAsync(HttpRequestMessage request, HttpStatusCode expected, CancellationToken token,
+        bool allowNoContent = false)
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5), timeProvider);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, timeout.Token);
-        using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, linked.Token);
-        if (response.StatusCode == expected && expected == HttpStatusCode.NoContent) return [];
+        try { return await ReadResponseAsync(request, expected, linked.Token, allowNoContent); }
+        catch (OperationCanceledException) when (timeout.IsCancellationRequested && !token.IsCancellationRequested)
+        {
+            throw new TimeoutException("Worker API request timed out.");
+        }
+    }
+
+    private async Task<byte[]?> ReadResponseAsync(HttpRequestMessage request, HttpStatusCode expected, CancellationToken token,
+        bool allowNoContent)
+    {
+        using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token);
+        if (response.StatusCode == HttpStatusCode.NoContent && (expected == HttpStatusCode.NoContent || allowNoContent)) return null;
         var media = response.Content.Headers.ContentType?.MediaType;
         if (media != (response.StatusCode == expected ? "application/json" : "application/problem+json"))
             throw new WorkerProtocolException("unexpected_response");
         if (response.Content.Headers.ContentLength > MaximumResponseBytes)
             throw new WorkerProtocolException("response_too_large");
-        await using var stream = await response.Content.ReadAsStreamAsync(linked.Token);
+        await using var stream = await response.Content.ReadAsStreamAsync(token);
         using var buffer = new MemoryStream();
         var chunk = new byte[8192];
         while (true)
         {
-            var read = await stream.ReadAsync(chunk, linked.Token);
+            var read = await stream.ReadAsync(chunk, token);
             if (read == 0) break;
             if (buffer.Length + read > MaximumResponseBytes) throw new WorkerProtocolException("response_too_large");
             buffer.Write(chunk, 0, read);
@@ -81,7 +92,10 @@ internal sealed class WorkerApiClient(HttpClient http, TimeProvider timeProvider
             // Only known protocol codes may reach diagnostics; response text is untrusted.
             if ((response.StatusCode, code) is (HttpStatusCode.Conflict, "worker_session_replaced")
                 or (HttpStatusCode.NotFound, "worker_not_found") or (HttpStatusCode.BadRequest, "invalid_request")
-                or (HttpStatusCode.InternalServerError, "internal_error"))
+                or (HttpStatusCode.InternalServerError, "internal_error")
+                or (HttpStatusCode.NotFound, "lease_not_found")
+                or (HttpStatusCode.Conflict, "worker_offline" or "lease_expired" or "lease_ownership_lost"
+                    or "lease_not_active" or "attempt_already_finalized" or "completion_report_conflict"))
                 throw new WorkerProtocolException(code!);
         }
         catch (Exception exception) when (exception is JsonException or InvalidOperationException or KeyNotFoundException) { }
