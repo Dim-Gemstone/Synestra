@@ -107,21 +107,52 @@ common terminal timestamps and absence of protocol completion data. Persistence
 enforces ordered locking, relationship revalidation and atomic storage. PostgreSQL
 enforces existing local checks and FKs, not cross-row lifecycle consistency or
 immutability against arbitrary SQL. Reportless legacy rows remain permitted;
-there is no backfill or repair. Discovery indexes require evidence from its actual
-query, and any necessary schema change must use a generated, tested migration.
+there is no backfill or repair.
 
-### Bounded discovery and automatic execution (subsequent units)
+Unit 2D.2 adds only the partial index `IX_leases_expiration_unreleased` on
+`leases (expires_at_utc, id) WHERE released_at_utc IS NULL`. Its key and predicate
+match the discovery cutoff, keyset and ordering query; primary-key joins check
+the related rows. A generated migration creates/drops this index without changing
+data or lifecycle constraints. Legacy rows and Worker completion checks remain
+unchanged, as verified by migrating an existing database with both forms of data.
 
-One read-only sweep selects expired eligible candidates ordered by ExpiresAtUtc ASC,
-Lease.Id ASC, with a fixed discovery cutoff per pass, bounded selection/memory and
-at most the configured number of inspected candidates. Keyset progression uses
-that pair without OFFSET. Advance the cursor through busy and failed candidates;
-reset it at the end of traversal so skipped work is revisited. The cursor is only
-traversal state, never correctness or ownership state. Restart/reset rediscovers
-persisted work. Each candidate invokes its own FinalizeExpiredExecution transaction
-and revalidates after locks. Distinguish finalized, skipped and failed outcomes;
-one candidate failure preserves preceding commits and does not block following
-candidates. Unexpected failures receive safe diagnostics; cancellation propagates.
+### Bounded discovery
+
+FinalizeExpiredExecutionSweep accepts a positive batch size and optional caller-owned
+cursor. IExpiredExecutionDiscovery selects expired eligible candidates read-only,
+ordered by ExpiresAtUtc ASC, Lease.Id ASC. One limited query projects only those two
+keys, without tracking, row locks, OFFSET or a batch transaction. It checks existing
+Worker/Job/attempt relationships and incomplete Running state without loading
+execution data. Each selected candidate counts toward the limit, including skips
+and failures; at most the requested batch size is selected or inspected.
+
+The cursor carries the last selected key and a UTC cutoff sampled from TimeProvider
+at the start of a traversal. The cutoff is fixed for each pass and retained across
+continuation passes in that traversal. This refinement prevents a continuously
+growing newly expired tail from indefinitely postponing revisits of busy/failed
+work. It does not change finalization time or eligibility: each candidate invokes
+its own FinalizeExpiredExecution transaction, revalidates after locks and samples
+the actual decision time independently.
+
+Advance the cursor through busy and failed candidates. A full page returns its last
+key as the continuation; a short or empty page resets the cursor. An exactly full
+last page therefore needs an empty pass to detect the end, without overfetching.
+The next traversal starts with a fresh cutoff and revisits skipped/failed work.
+The cursor is only traversal state, never correctness, ownership or idempotency
+state. Restart/reset safely rediscovers persisted work; no process-local cache
+is required.
+
+Return separate inspected, finalized, skipped and failed counts plus the next
+cursor. Only a successfully committed per-execution result counts as finalized;
+all returned non-Finalized outcomes count as skipped. One candidate failure preserves preceding
+commits and does not block following candidates. Its safe diagnostic contains only
+LeaseId and exception type, without an exception object/message or execution data.
+Discovery failure logs only its exception type and propagates before any candidate
+transaction. Cancellation propagates, ends the pass and produces no continuation
+result; earlier commits
+remain durable and the caller can retain its old cursor or reset safely.
+
+### Automatic execution (subsequent unit)
 
 The completed slice adds one thin hosted service to the current API host. Defaults:
 enabled, immediate first pass after host startup, 5 seconds from the end of a pass
@@ -151,9 +182,12 @@ broker/cache, cleanup/retention or automatic startup migrations are included.
 This ADR was recorded before production implementation. Unit 2D.1 implements atomic
 finalization of one Lease through an internal use case, with Domain/Application,
 real PostgreSQL concurrency/rollback/legacy and Worker API regression coverage.
-The schema remains unchanged. Bounded discovery (2D.2) and hosted execution (2D.3)
-remain unimplemented and require separate batches.
-Automatic eventual finalization is not implemented by 2D.1 alone. After 2D.3,
-Slice 2D may be marked implemented, while Slice 2 remains incomplete. The next
+Unit 2D.2 implements bounded discovery and independent per-candidate finalization,
+with keyset traversal, failure isolation and a generated partial-index migration.
+Application and real PostgreSQL tests cover boundaries, backlog progression,
+busy/failing candidates, concurrent scopes, stale discovery, cancellation, reset
+and legacy migration compatibility. Hosted execution (2D.3) remains unimplemented
+and requires a separate batch. Automatic eventual finalization does not yet run.
+After 2D.3, Slice 2D may be marked implemented, while Slice 2 remains incomplete. The next
 product increment is Slice 2E (minimal Worker and bounded workload); client-visible
 terminal outcome/result remains Slice 2F.

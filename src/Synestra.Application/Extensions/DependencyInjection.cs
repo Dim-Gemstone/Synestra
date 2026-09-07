@@ -20,6 +20,7 @@ public static class DependencyInjection
         services.AddScoped<RenewLease>();
         services.AddScoped<ReportExecutionCompletion>();
         services.AddScoped<FinalizeExpiredExecution>();
+        services.AddScoped<FinalizeExpiredExecutionSweep>();
         return services;
     }
 }

@@ -117,6 +117,21 @@ first makes the finalizer check its current expiration. Worker liveness/history 
 new claims are unaffected. Expired ownership already ceased to count toward capacity.
 
 This records loss without retry, Worker termination or certainty about external
-effects. No new attempt/Lease is created and no Job returns to Pending. Discovery
-and automatic hosted invocation are absent, so eventual finalization is not yet
+effects. No new attempt/Lease is created and no Job returns to Pending.
+
+## Implemented bounded loss sweep (ADR-0014, unit 2D.2)
+
+FinalizeExpiredExecutionSweep discovers at most the requested positive batch size
+of expired candidates, ordered by expiration and LeaseId. Read-only discovery
+uses a fixed cutoff and keyset cursor; it does not authorize a lifecycle mutation.
+Every candidate invokes the one-execution transition above in its own transaction.
+Renewal or completion after discovery is rechecked against the locked current state.
+
+The cursor advances through busy and failed candidates and resets at traversal end
+so they can be revisited. Retaining the cutoff across continuation passes bounds
+the traversal against newly expired work. One failure preserves earlier commits
+and allows following candidates to proceed; cancellation ends the pass. Reset or
+restart finds remaining persisted work without a local ownership cache.
+
+Automatic hosted invocation is still absent, so eventual finalization is not yet
 implemented. Slice 2D and Slice 2 remain incomplete.

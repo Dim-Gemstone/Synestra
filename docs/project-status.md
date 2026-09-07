@@ -58,7 +58,7 @@ This document is not a replacement for ADRs. Important accepted decisions should
 | Synestra follows a pragmatic domain-oriented architecture | Accepted direction | Domain modeling is used where useful without adopting full ceremonial DDD by default. |
 | Slice 2B supports atomic claim and durable ownership | Accepted / Implemented | Current online Worker sessions claim one available, exactly supported Pending Job through the Worker API. Application owns READ COMMITTED; Worker FOR UPDATE protects capacity and session state, then Job FOR UPDATE SKIP LOCKED applies priority/availability/creation/UUID ordering. Job.StartAttempt creates a Running attempt and a session-bound Lease atomically with Pending -> Running. Default duration is 30 seconds; claim never changes liveness. Expired leases stop consuming slots without finalization or retry. API returns the original eight execution fields plus ADR-0013 leaseToken after commit, identical 204 for no work/capacity and stable Problem Details. PostgreSQL and API concurrency/restart tests cover the path. Legacy null-session leases are preserved, with checks/FKs for non-null bindings. See ADR-0012. |
 | Slice 2C supports Lease renewal and execution reporting | Accepted / Implemented | ADR-0013 adds per-Lease random token/hash fencing, monotonic renewal independent of heartbeat, strict success/failure reports and durable ReportId replay. Job coordinates terminal Job/attempt state and matching finish/release times; PostgreSQL transactions commit snapshot and capacity release together. Ordered row locks and rollback cleanup protect races and scope reuse. Legacy tokenless leases remain fenced; Client GetJob is unchanged. |
-| Slice 2D records lost execution without retry | Accepted / Partially implemented | ADR-0014 defines the full contract. Unit 2D.1 finalizes one expired, consistent execution internally: attempt Abandoned, Job Failed, matching finish/completion/release time and fixed expiry error, without a Worker report. Ordered nonblocking locks, revalidation and rollback cleanup protect concurrency and replay. Legacy sessions/tokens are supported. No discovery or hosted invocation exists, so automatic eventual finalization and Slice 2D remain incomplete. |
+| Slice 2D records lost execution without retry | Accepted / Partially implemented | ADR-0014 defines the full contract. Unit 2D.1 atomically finalizes one expired, consistent execution internally, with ordered nonblocking locks, revalidation and rollback cleanup. Unit 2D.2 adds bounded read-only discovery and a keyset sweep with separate candidate transactions, failure isolation and a focused partial index. Cursor reset revisits skipped/failed work; legacy compatibility and Worker completion replay are preserved. No hosted invocation exists, so automatic eventual finalization and Slice 2D remain incomplete. |
 
 ---
 
@@ -201,10 +201,12 @@ claim, token-fenced renewal and idempotent execution reporting survive API resta
 Reported success/failure atomically finalizes Job/attempt, persists a small result
 or error, and releases Lease capacity. Late completion before finalization is
 accepted. Unit 2D.1 adds internal, atomic loss finalization for one expired Lease,
-including legacy ownership, concurrency and rollback behavior. It does not run
-automatically. Slice 2D and Slice 2 remain incomplete.
+including legacy ownership, concurrency and rollback behavior. Unit 2D.2 adds a
+bounded internal sweep with read-only keyset discovery, independent transactions,
+failure isolation and safe restart/reset. It does not run automatically.
+Slice 2D and Slice 2 remain incomplete.
 
-Next within Slice 2D is bounded discovery/sweep (2D.2), then hosted invocation (2D.3)
+Next within Slice 2D is hosted invocation (2D.3)
 to provide eventual lost-execution finalization without automatic retry under ADR-0014.
 Slice 2E adds a minimal Worker and bounded workload; Slice 2F adds client-visible
 terminal outcome/result. No Worker executable, actual workload execution or Client

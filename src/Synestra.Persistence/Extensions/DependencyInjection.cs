@@ -21,6 +21,7 @@ public static class DependencyInjection
         s.AddScoped<IRenewLeasePersistence, RenewLeasePersistence>();
         s.AddScoped<IReportExecutionCompletionPersistence, ReportExecutionCompletionPersistence>();
         s.AddScoped<IFinalizeExpiredExecutionPersistence, FinalizeExpiredExecutionPersistence>();
+        s.AddScoped<IExpiredExecutionDiscovery, ExpiredExecutionDiscovery>();
         return s;
     }
 }

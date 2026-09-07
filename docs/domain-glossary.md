@@ -85,7 +85,7 @@ outcome/result remains unimplemented.
 
 ## Lost-execution terminology
 
-ADR-0014 defines Slice 2D. Unit 2D.1 implements only internal finalization of one
+ADR-0014 defines Slice 2D. Unit 2D.1 implements internal finalization of one
 expired Lease. The Job becomes Failed, its Running attempt becomes Abandoned,
 and the Lease is released with matching decision timestamps and the fixed
 `execution_lease_expired` error. There is no synthetic Worker report or result.
@@ -95,8 +95,11 @@ Inconsistent relationships are skipped without repair. Completion and loss share
 ordered locks; the first committed terminal transition wins without overwriting
 Worker completion replay. No attempt is retried, and external effects remain uncertain.
 
-There is no discovery sweep or hosted finalizer yet. Automatic eventual loss
-recording is therefore not implemented; Slice 2D and Slice 2 remain incomplete.
+Unit 2D.2 adds an internal bounded sweep of expired candidates. Its cursor is a
+last expiration/LeaseId pair plus a fixed traversal cutoff, used only to advance
+discovery and revisit skipped/failed work after each cycle. Every candidate still
+needs its own transaction and locked eligibility check. No hosted finalizer runs
+yet, so automatic eventual loss recording, Slice 2D and Slice 2 remain incomplete.
 
 ## Scenario execution terminology
 

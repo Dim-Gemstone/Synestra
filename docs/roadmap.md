@@ -3,8 +3,9 @@
 Slices 1, 1A, 1B, 2A, 2B, and 2C are implemented. Slice 2 remains incomplete.
 ADR-0011 defines registration/liveness and ADR-0012 defines atomic claim and
 execution ownership; ADR-0013 defines token fencing, renewal and completion reports.
-ADR-0014 defines loss finalization; its atomic single-execution path is implemented,
-but Slice 2D remains incomplete without discovery and automatic invocation.
+ADR-0014 defines loss finalization; its atomic single-execution path and bounded
+internal sweep are implemented, but Slice 2D remains incomplete without automatic
+hosted invocation.
 ADR-0008 accepts the execution direction and
 the requirements illustrated in `execution-scenarios.md`. The later slices below are
 a proposed delivery sequence, not implemented features or approval of their open
@@ -180,7 +181,7 @@ There is no Worker executable, read/list endpoint, background monitor or recover
   and multi-instance tests cover ownership, fencing and capacity.
 
 Slice 2B creates durable ownership only. Slice 2C adds renewal and reporting below;
-workloads still do not execute and lost-execution finalization remains absent.
+workloads still do not execute and automatic lost-execution finalization remains absent.
 
 ### Slice 2C — Lease renewal and execution reporting (implemented)
 
@@ -214,9 +215,12 @@ and the Lease is released atomically without retry or a synthetic Worker report.
 Domain, Application, PostgreSQL concurrency/rollback/legacy and API regression
 tests cover that path.
 
-Bounded discovery and automatic hosted invocation remain absent. Eventual recording
-of loss is therefore not yet implemented; expiration freeing capacity alone is
-insufficient. Complete that server path before marking Slice 2D implemented.
+Bounded read-only discovery and an internal sweep are also implemented, with keyset
+progression, independent candidate transactions, failure isolation and revisits of
+skipped work. PostgreSQL tests cover backlog, concurrency, reset and legacy migration
+compatibility. Automatic hosted invocation remains absent, so eventual recording
+of loss is not yet implemented. Complete that server path before marking Slice 2D
+implemented.
 
 ### Slice 2E — Minimal Worker and bounded test workload (proposed)
 
@@ -269,7 +273,7 @@ constraint or speculative retry/workflow tables.
 
 Currently submission, opt-in idempotent replay, retrieval by ID, Worker
 registration/liveness, atomic claim, renewal, idempotent execution reporting and
-internal finalization of one expired execution are implemented. Automatic loss
+internal atomic finalization with a bounded discovery sweep are implemented. Automatic loss
 finalization, actual workload execution, client-visible terminal outcome/result
 and control are not. Complete Slice 2D next, followed by 2E and 2F as described above.
 A minimally useful execution product still needs Worker execution, reliable ownership/loss handling,
