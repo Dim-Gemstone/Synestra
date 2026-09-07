@@ -25,6 +25,7 @@
     <File Path="docs/decisions/0012-atomic-job-claim.md" />
     <File Path="docs/decisions/0013-lease-renewal-and-execution-reporting.md" />
     <File Path="docs/decisions/0014-lost-execution-finalization.md" />
+    <File Path="docs/decisions/0015-minimal-worker-runtime-and-bounded-test-workload.md" />
     <File Path="docs/decisions/README.md" />
   </Folder>
   <Folder Name="/orchestration/">
@@ -45,11 +46,13 @@
     <Project Path="src/Synestra.Api/Synestra.Api.csproj" />
     <Project Path="src/Synestra.Domain/Synestra.Domain.csproj" Id="42ebdb47-7f8d-47a5-aeb3-5c39483ecd89" />
     <Project Path="src/Synestra.MigrationWorker/Synestra.MigrationWorker.csproj" />
+    <Project Path="src/Synestra.Worker/Synestra.Worker.csproj" />
     <Project Path="src/Synestra.Persistence/Synestra.Persistence.csproj" Id="1c38c2d2-7b55-4192-bdd4-b416b201d690" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Synestra.Api.IntegrationTests/Synestra.Api.IntegrationTests.csproj" />
     <Project Path="tests/Synestra.Application.Tests/Synestra.Application.Tests.csproj" />
+    <Project Path="tests/Synestra.Worker.Tests/Synestra.Worker.Tests.csproj" />
     <Project Path="tests/Synestra.Domain.Tests/Synestra.Domain.Tests.csproj" />
     <Project Path="tests/Synestra.Persistence.IntegrationTests/Synestra.Persistence.IntegrationTests.csproj" />
   </Folder>

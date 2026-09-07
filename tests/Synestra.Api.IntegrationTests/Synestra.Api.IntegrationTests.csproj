@@ -19,6 +19,8 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Synestra.Api\Synestra.Api.csproj" />
     <ProjectReference Include="..\..\src\Synestra.Persistence\Synestra.Persistence.csproj" />
+    <ProjectReference Include="..\..\src\Synestra.Worker\Synestra.Worker.csproj" />
+    <Compile Include="../Synestra.Worker.Tests/Infrastructure/ControlledTimeProvider.cs" Link="Infrastructure/ControlledTimeProvider.cs" />
   </ItemGroup>
 
 </Project>

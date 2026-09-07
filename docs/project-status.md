@@ -62,6 +62,13 @@ This document is not a replacement for ADRs. Important accepted decisions should
 
 ---
 
+ADR-0015 accepts the minimal Worker runtime and bounded test workload. Unit 2E.1
+implements the long-lived executable, persistent local identity, per-launch
+session, registration and heartbeat with controlled timing and graceful shutdown.
+The Worker uses HTTP only and has no control-plane project/database dependency.
+Its advertised type is `test.bounded-sum.v1`, capacity is one, and it does not
+claim or execute work yet. Slices 2E and 2 remain incomplete.
+
 ## Proposed
 
 The following ideas are considered plausible directions but are not yet binding architectural or domain decisions.
@@ -71,8 +78,8 @@ The following ideas are considered plausible directions but are not yet binding 
 | Focused application services/use cases instead of full CQRS/Mediator infrastructure | Likely sufficient for the current system, but the exact Application architecture should emerge from real use cases. |
 | Retry with backoff | Retries are expected, but retry policy, timing, classification, and ownership are not yet defined. |
 | Live-process pause | Candidate for a later feature; resource, lease, and capacity semantics are undefined. Durable resume is a separate open question. |
-| A worker agent supervises separate execution processes | This fits dynamic workloads and CEF process trees, but agent lifetime and process-isolation rules are not yet defined. |
-| Worker wakeup/delivery policy | Explicit Worker API claims are implemented; polling cadence, long-polling, streaming, push or broker notifications remain undecided. |
+| A worker agent supervises separate execution processes | This fits dynamic workloads and CEF process trees. ADR-0015 selects in-process execution only for its bounded built-in test handler; general isolation is still open. |
+| Worker wakeup/delivery beyond 2E | ADR-0015 accepts simple polling for the minimal agent; it is not implemented in 2E.1. Long-polling, streaming, push and broker notifications remain undecided. |
 | Worker/browser pools and groups | These originate from the earlier browser-management concept and may be useful later, but they are not required by the current core. |
 | Remote browser access | A potential future capability rather than a current core requirement. |
 | Headless CEF workers | A plausible worker mode, but rendering and interactive access requirements remain unresolved. |
@@ -91,10 +98,10 @@ Implementation must not silently choose semantics for them unless the relevant t
 | Job definitions | Who creates and manages `JobDefinition` records? |
 | Job submission | Who is allowed to submit jobs? |
 | Worker trust | ADR-0011 temporarily requires a trusted/private boundary without authentication. Which future authentication and authorization mechanism will prove identity and govern replacement? |
-| Worker process lifetime | Are worker agents long-lived supervisors, ephemeral single-job processes, or are both modes supported? |
-| Execution isolation | Does each attempt receive a separate process, and who owns timeout, termination, cleanup, and result collection? |
+| Worker process lifetime | ADR-0015 chooses a long-lived capacity-one agent for 2E. Are other lifetime modes needed for later workloads? |
+| Execution isolation | ADR-0015 bounds one trusted in-process test handler. Which later workloads require separate processes, and who owns their termination and resource lifecycle? |
 | API deployment | Do Client API and Worker API remain one deployment or eventually become independently deployed services? |
-| Work delivery | Does a worker poll, long-poll, stream, receive push notifications, or consume broker notifications before claiming work? |
+| Work delivery | ADR-0015 selects polling for 2E. Do later workloads require long-polling, streaming, push or broker notifications before claiming work? |
 | Delivery guarantee | Is execution explicitly at-least-once, or does Synestra provide another guarantee? |
 | Duplicate execution | Under which failure scenarios can the same logical job execute more than once? |
 | Retry creation | Claim creates an attempt for a Pending Job under ADR-0012. How will a future retry policy make a failed/lost Job eligible again? |
@@ -207,10 +214,13 @@ failure isolation and safe restart/reset. Unit 2D.3 runs that sweep automaticall
 in enabled API hosts, including after restart and across concurrent instances.
 Slice 2 remains incomplete.
 
-Next is Slice 2E: a minimal Worker and bounded workload. Slice 2F adds client-visible
-terminal outcome/result. No Worker executable, actual workload execution or Client
-API outcome/result expansion exists yet. A minimally useful execution product still
-needs those increments and the verified submit-to-result path with defined loss behavior.
+Slice 2E is in progress: ADR-0015 is accepted and unit 2E.1 implements the minimal
+Worker executable's identity, registration and heartbeat. Next is 2E.2 bounded
+execution with lease maintenance and completion, followed by transport recovery
+and process qualification. Slice 2F adds client-visible terminal outcome/result.
+Actual workload execution and Client API outcome/result expansion remain absent.
+A minimally useful execution product still needs those increments and the
+verified submit-to-result path with defined loss behavior.
 
 The current working interpretation is:
 

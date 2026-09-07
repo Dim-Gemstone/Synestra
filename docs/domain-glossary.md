@@ -10,7 +10,7 @@ decided.
 | `Job` | One logical unit of submitted work | One physical execution | References its definition by ID, snapshots its type and preserves attempt history; StartAttempt owns Pending -> Running, SucceedAttempt/FailAttempt coordinate Worker completion, and AbandonAttempt records loss as Failed under ADR-0014 | Cancellation and retry semantics |
 | `JobAttempt` | One execution try for a Job | The retry policy itself | Created Running during claim with max(history) + 1; completion stores success result or failure error; loss records Abandoned with an expiry error and a finish time matching Job completion | Future retry and cancellation transitions |
 | `Lease` | Time-bounded exclusive right for a Worker session to execute an attempt | A permanent lock or execution result; LeaseId is not a credential | Worker/session-bound, renewable before expiration, released atomically on completion or loss finalization; one unreleased/unexpired Lease consumes a slot | Any future standalone release protocol |
-| `Worker` | Registered worker agent with identity, liveness and finite capacity | An OS thread, HTTP request, browser instance or individual CEF subprocess | Stable UUID v7 identity and replaceable process session; exact supported types; positive capacity; only registration/heartbeat confirm liveness | Future authentication and execution process lifetime/isolation |
+| `Worker` | Registered worker agent with identity, liveness and finite capacity | An OS thread, HTTP request, browser instance or individual CEF subprocess | Stable UUID v7 identity and replaceable process session; exact supported types; positive capacity; only registration/heartbeat confirm liveness; ADR-0015 adds a long-lived capacity-one agent with implemented identity/liveness | Future authentication and general execution process lifetime/isolation |
 
 ## Working execution terminology
 
@@ -29,6 +29,12 @@ of CEF subprocesses. Those subprocesses are workload implementation details,
 not individual Synestra Workers.
 
 See `job-lifecycle.md` for confirmed and undecided lifecycle behavior.
+
+ADR-0015's minimal executable persists WorkerId in an explicit local state
+directory and holds exclusive ownership of that directory until shutdown. Every
+launch creates a fresh SessionId. Unit 2E.1 only registers and heartbeats; the
+accepted bounded in-process handler and claim/renewal/reporting loops are not yet
+implemented. This limited isolation decision does not select a browser process model.
 
 ## Worker registration terminology
 

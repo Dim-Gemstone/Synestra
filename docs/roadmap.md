@@ -225,11 +225,18 @@ Eventual recording requires an enabled host, available database and locks that
 eventually release; it has no exact deadline during outage or contention.
 Slice 2 remains incomplete; the next increment is Slice 2E.
 
-### Slice 2E — Minimal Worker and bounded test workload (proposed)
+### Slice 2E — Minimal Worker and bounded test workload (in progress)
 
-Implement a minimal Worker agent and bounded handler that exercise registration,
-heartbeat, claim, renewal and reporting. Define execution isolation and resource
-cleanup within this increment. No Worker executable exists yet.
+ADR-0015 accepts a long-lived capacity-one agent, stable local identity, a bounded
+in-process test workload, lease maintenance, shutdown and transport failure rules.
+The executable now persists WorkerId, creates a fresh process session, registers
+and heartbeats through HTTP, uses controlled timers and stops on fencing/failure.
+Worker unit/host and real API/PostgreSQL tests cover identity, liveness and restart.
+
+Claim, the bounded handler, renewal/completion, bounded transport recovery and
+local Aspire/process qualification remain to be implemented. The agent currently
+advertises the accepted test type but never claims or executes work. Slice 2E and
+Slice 2 remain incomplete; the next increment is bounded execution within 2E.
 
 ### Slice 2F — Client-visible terminal outcome and small result (proposed)
 
