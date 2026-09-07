@@ -133,5 +133,19 @@ the traversal against newly expired work. One failure preserves earlier commits
 and allows following candidates to proceed; cancellation ends the pass. Reset or
 restart finds remaining persisted work without a local ownership cache.
 
-Automatic hosted invocation is still absent, so eventual finalization is not yet
-implemented. Slice 2D and Slice 2 remain incomplete.
+## Implemented automatic loss finalization (ADR-0014, unit 2D.3)
+
+The API host runs the bounded sweep after startup and then waits 5 seconds after
+each completed pass by default, with at most 100 inspected candidates. Each pass
+gets a fresh scope; the cursor survives between passes but resets on host restart.
+The first pass rediscovers persisted eligible work without an initial interval
+delay. Passes cannot overlap within a host, and multiple hosts use the existing
+nonblocking row locks. Temporary failure is followed by the configured delay;
+shutdown cancels waiting or in-flight work and rolls back unfinished transactions.
+
+Finalization is enabled by default and can be explicitly disabled through
+ExecutionFinalization configuration (see `testing.md`). Eventual loss recording
+requires an enabled running host, available database and locks that eventually
+release; no exact deadline is promised during outages or contention. Disabled
+deployments do not promise eventual finalization. Slice 2D is implemented, while
+Slice 2 still lacks Worker workload execution and client-visible outcome/result.

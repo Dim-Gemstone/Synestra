@@ -239,6 +239,7 @@ public sealed partial class ExecutionApiTests(PostgreSqlFixture postgres) : IAsy
     private SynestraDbContext Context() => new(new DbContextOptionsBuilder<SynestraDbContext>().UseNpgsql(_database.ConnectionString).Options);
     private WebApplicationFactory<Program> Factory() => new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         builder.UseSetting("ConnectionStrings:synestra", _database.ConnectionString)
+            .UseSetting("ExecutionFinalization:Enabled", "false")
             .ConfigureTestServices(services => services.AddSingleton<TimeProvider>(_clock)));
     private sealed record Acquired(Guid WorkerId, Guid SessionId, Guid LeaseId, string Secret, Guid JobId, Guid AttemptId);
     private sealed class Clock(DateTimeOffset now) : TimeProvider

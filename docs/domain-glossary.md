@@ -98,8 +98,15 @@ Worker completion replay. No attempt is retried, and external effects remain unc
 Unit 2D.2 adds an internal bounded sweep of expired candidates. Its cursor is a
 last expiration/LeaseId pair plus a fixed traversal cutoff, used only to advance
 discovery and revisit skipped/failed work after each cycle. Every candidate still
-needs its own transaction and locked eligibility check. No hosted finalizer runs
-yet, so automatic eventual loss recording, Slice 2D and Slice 2 remain incomplete.
+needs its own transaction and locked eligibility check.
+
+Unit 2D.3 runs this sweep automatically in the API host, enabled by default, with
+an immediate first pass, up to 100 candidates and a 5-second delay after each pass.
+This is a server background process, not a Worker agent. Restart discards the
+traversal cursor and rediscovers persisted work; multiple hosts coordinate through
+the same row locks. Eventual recording requires an enabled host, available database
+and locks that eventually release. Disabled deployments provide no such promise.
+Slice 2D is implemented; Slice 2 still needs Worker execution and Client outcome/result.
 
 ## Scenario execution terminology
 

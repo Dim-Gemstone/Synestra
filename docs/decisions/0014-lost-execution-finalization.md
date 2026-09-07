@@ -8,7 +8,8 @@ ADR-0008 requires eventual recording of lost execution without automatic rerun.
 ADR-0012 stops counting expired Leases toward capacity; ADR-0013 permits late
 completion until another terminal transition commits. This decision defines all
 of Slice 2D while implementation proceeds only through explicitly selected units.
-Slice 2D and Slice 2 remain incomplete until the automatic host path is verified.
+Slice 2D is implemented through the verified automatic host path in unit 2D.3.
+Slice 2 remains incomplete without Worker execution and Client outcome/result.
 No Worker executable, workload execution or Client result extension is included.
 
 ## Decision
@@ -149,12 +150,12 @@ commits and does not block following candidates. Its safe diagnostic contains on
 LeaseId and exception type, without an exception object/message or execution data.
 Discovery failure logs only its exception type and propagates before any candidate
 transaction. Cancellation propagates, ends the pass and produces no continuation
-result; earlier commits
-remain durable and the caller can retain its old cursor or reset safely.
+result; earlier commits remain durable and the caller can retain its old cursor
+or reset safely.
 
-### Automatic execution (subsequent unit)
+### Automatic execution
 
-The completed slice adds one thin hosted service to the current API host. Defaults:
+The current API host runs one thin ExpiredExecutionFinalizer hosted service. Defaults:
 enabled, immediate first pass after host startup, 5 seconds from the end of a pass
 to the next pass, and 100 inspected candidates per pass. Validate options at startup
 and allow explicit disablement. Disabled deployments do not promise eventual
@@ -162,6 +163,22 @@ finalization. The host creates one service scope per pass, calls Application, ha
 no overlapping local passes, propagates shutdown cancellation and waits the interval
 after temporary failures. Time/timer is injectable. No transaction spans candidates
 or waits. Multiple instances run safely without leader election or global locks.
+
+ExecutionFinalizationOptions binds the `ExecutionFinalization` configuration section:
+`Enabled` defaults to true, `IntervalSeconds` to 5 and `BatchSize` to 100. Startup
+validation applies even when disabled. Batch size must be positive; interval must
+be 1 through 4,294,967 whole seconds, within the runtime's one-shot timer limit.
+Configuration is read at startup; changing it requires restarting the host.
+
+The service waits for ApplicationStarted, then invokes the sweep immediately.
+It retains only the returned traversal cursor between scopes, resetting on restart.
+The awaited loop disposes each scope before creating a TimeProvider-backed delay
+from pass completion, so slow passes cannot overlap or accumulate catch-up ticks.
+Whole-pass failure retains the preceding cursor and waits the same interval before
+trying again. Host diagnostics use aggregate counts or exception type only; no
+exception object/message, execution data or credentials are logged by the service.
+Shutdown cancellation reaches discovery and the per-execution transaction, or
+cancels the pending delay, and is treated as normal shutdown.
 
 Eventual finalization applies to eligible, consistent executions while an enabled
 host operates, the database is available and locks eventually release. There is no
@@ -186,8 +203,12 @@ Unit 2D.2 implements bounded discovery and independent per-candidate finalizatio
 with keyset traversal, failure isolation and a generated partial-index migration.
 Application and real PostgreSQL tests cover boundaries, backlog progression,
 busy/failing candidates, concurrent scopes, stale discovery, cancellation, reset
-and legacy migration compatibility. Hosted execution (2D.3) remains unimplemented
-and requires a separate batch. Automatic eventual finalization does not yet run.
-After 2D.3, Slice 2D may be marked implemented, while Slice 2 remains incomplete. The next
-product increment is Slice 2E (minimal Worker and bounded workload); client-visible
-terminal outcome/result remains Slice 2F.
+and legacy migration compatibility. Unit 2D.3 adds automatic host invocation,
+validated configuration, independent scopes, controlled delays and graceful shutdown.
+Real PostgreSQL host tests cover startup, expiration boundaries, cursor progression,
+temporary failure, restart, simultaneous hosts and Worker completion/renewal races.
+Worker replay/error precedence and the Client response shape remain unchanged.
+
+Slice 2D is implemented; Slice 2 remains incomplete. The next product increment
+is Slice 2E (minimal Worker and bounded workload); client-visible terminal
+outcome/result remains Slice 2F. No additional schema change is needed for 2D.3.

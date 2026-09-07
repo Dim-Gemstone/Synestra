@@ -1,11 +1,10 @@
 # Roadmap
 
-Slices 1, 1A, 1B, 2A, 2B, and 2C are implemented. Slice 2 remains incomplete.
+Slices 1, 1A, 1B, 2A, 2B, 2C, and 2D are implemented. Slice 2 remains incomplete.
 ADR-0011 defines registration/liveness and ADR-0012 defines atomic claim and
 execution ownership; ADR-0013 defines token fencing, renewal and completion reports.
-ADR-0014 defines loss finalization; its atomic single-execution path and bounded
-internal sweep are implemented, but Slice 2D remains incomplete without automatic
-hosted invocation.
+ADR-0014 defines implemented automatic loss finalization through an atomic
+single-execution path, bounded discovery and an enabled-by-default hosted service.
 ADR-0008 accepts the execution direction and
 the requirements illustrated in `execution-scenarios.md`. The later slices below are
 a proposed delivery sequence, not implemented features or approval of their open
@@ -181,7 +180,7 @@ There is no Worker executable, read/list endpoint, background monitor or recover
   and multi-instance tests cover ownership, fencing and capacity.
 
 Slice 2B creates durable ownership only. Slice 2C adds renewal and reporting below;
-workloads still do not execute and automatic lost-execution finalization remains absent.
+Slice 2D adds automatic loss finalization. Workloads still do not execute.
 
 ### Slice 2C — Lease renewal and execution reporting (implemented)
 
@@ -206,7 +205,7 @@ and unreleased with valid ownership. This is not lost-execution recovery. No Wor
 executable, actual workload execution or client-visible outcome/result expansion
 is implemented. The whole Slice 2 remains incomplete.
 
-### Slice 2D — Lost-execution finalization (incomplete)
+### Slice 2D — Lost-execution finalization (implemented)
 
 ADR-0014 defines terminal loss, exact expiration eligibility, nonblocking ordered
 row locks and the first-committed terminal transition rule. Internal finalization
@@ -218,9 +217,13 @@ tests cover that path.
 Bounded read-only discovery and an internal sweep are also implemented, with keyset
 progression, independent candidate transactions, failure isolation and revisits of
 skipped work. PostgreSQL tests cover backlog, concurrency, reset and legacy migration
-compatibility. Automatic hosted invocation remains absent, so eventual recording
-of loss is not yet implemented. Complete that server path before marking Slice 2D
-implemented.
+compatibility. The API hosted service runs an immediate first pass and waits
+5 seconds after each pass, inspecting at most 100 candidates by default. Validated
+configuration supports explicit disablement. Controlled host tests verify startup,
+shutdown, temporary failure, restart, concurrent instances and Worker API races.
+Eventual recording requires an enabled host, available database and locks that
+eventually release; it has no exact deadline during outage or contention.
+Slice 2 remains incomplete; the next increment is Slice 2E.
 
 ### Slice 2E — Minimal Worker and bounded test workload (proposed)
 
@@ -273,10 +276,10 @@ constraint or speculative retry/workflow tables.
 
 Currently submission, opt-in idempotent replay, retrieval by ID, Worker
 registration/liveness, atomic claim, renewal, idempotent execution reporting and
-internal atomic finalization with a bounded discovery sweep are implemented. Automatic loss
-finalization, actual workload execution, client-visible terminal outcome/result
-and control are not. Complete Slice 2D next, followed by 2E and 2F as described above.
-A minimally useful execution product still needs Worker execution, reliable ownership/loss handling,
+automatic loss finalization with a bounded discovery sweep are implemented.
+Actual workload execution, client-visible terminal outcome/result and control
+remain absent. Continue with Slice 2E, followed by 2F as described above.
+A minimally useful execution product still needs Worker execution,
 client-visible outcomes, and a concrete workload. Long-running scenario control
 follows in Slice 3; automatic retries, pause, and Workflow are not prerequisites
 for the first execution slice.
