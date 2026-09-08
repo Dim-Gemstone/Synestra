@@ -40,11 +40,12 @@ public sealed partial class WorkerExecutionTests(PostgreSqlFixture postgres) : I
     [InlineData(0, false)]
     [InlineData(0, true)]
     [InlineData(40000, false)]
-    public async Task AgentExecutesThroughWorkerApiAndPersistsCompletionWithoutExpandingClientContract(int duration, bool invalid)
+    public async Task AgentExecutesThroughWorkerApiAndClientObservesCompletion(int duration, bool invalid)
     {
         await using var api = Factory(_clock);
         using var client = api.CreateClient();
         var jobId = await SubmitAsync(client, duration, invalid);
+        await AssertClientJobAsync(client, jobId, "pending");
         using var transport = new HttpMessageInvoker(api.Server.CreateHandler());
         using var routing = new Routing(transport);
         using var agent = Agent(routing);
@@ -57,6 +58,7 @@ public sealed partial class WorkerExecutionTests(PostgreSqlFixture postgres) : I
                 Assert.Equal(1, routing.Count("claims"));
                 await using var context = Context();
                 Assert.Equal(JobStatus.Running, (await context.Jobs.SingleAsync(Token)).Status);
+                await AssertClientJobAsync(client, jobId, "running");
                 _clock.Advance(TimeSpan.FromSeconds(10));
             }
         }
@@ -127,10 +129,12 @@ public sealed partial class WorkerExecutionTests(PostgreSqlFixture postgres) : I
         await agent.StartAsync(Token);
         if (frozen) await routing.CompletionEntered.Task.WaitAsync(TimeSpan.FromSeconds(10), Token);
         else await ExecutingAsync();
+        await AssertClientJobAsync(client, jobId, "running");
 
         // Advance the authoritative server UTC independently, then observe a completed host pass.
         serverClock.Advance(TimeSpan.FromSeconds(31));
         await serverClock.NextDelayAsync(Token);
+        var lost = await AssertClientJobAsync(client, jobId, "abandoned");
         if (frozen) routing.ReleaseCompletion.TrySetResult();
         else _clock.Advance(TimeSpan.FromSeconds(10));
         await IdleAsync();
@@ -151,6 +155,7 @@ public sealed partial class WorkerExecutionTests(PostgreSqlFixture postgres) : I
         Assert.Equal(frozen ? 0 : 1, routing.Count("renewal"));
         Assert.Contains(routing.Responses, response => response.Operation == (frozen ? "completion" : "renewal") && response.Status == HttpStatusCode.Conflict);
         Assert.Equal(2, routing.Count("claims"));
+        Assert.True(JsonElement.DeepEquals(lost, await AssertClientJobAsync(client, jobId, "abandoned")));
         await StopAsync(agent);
     }
 
@@ -161,13 +166,14 @@ public sealed partial class WorkerExecutionTests(PostgreSqlFixture postgres) : I
         await using var api = Factory(serverClock, finalizerEnabled: true);
         using var client = api.CreateClient();
         await serverClock.NextDelayAsync(Token);
-        await SubmitAsync(client, 40000);
+        var jobId = await SubmitAsync(client, 40000);
         using var transport = new HttpMessageInvoker(api.Server.CreateHandler());
         using var routing = new Routing(transport);
         using var agent = Agent(routing);
         await agent.StartAsync(Token);
         await ExecutingAsync();
         await StopAsync(agent);
+        await AssertClientJobAsync(client, jobId, "running");
         Assert.Equal(0, routing.Count("completion"));
         await using (var context = Context())
         {
@@ -180,6 +186,7 @@ public sealed partial class WorkerExecutionTests(PostgreSqlFixture postgres) : I
         Assert.Equal(JobAttemptStatus.Abandoned, (await final.JobAttempts.SingleAsync(Token)).Status);
         Assert.Equal(JobStatus.Failed, (await final.Jobs.SingleAsync(Token)).Status);
         Assert.NotNull((await final.Leases.SingleAsync(Token)).ReleasedAtUtc);
+        await AssertClientJobAsync(client, jobId, "abandoned");
     }
 
     private async Task AssertCompletedAsync(Guid jobId, bool invalid, Routing routing, HttpClient client)
@@ -209,15 +216,66 @@ public sealed partial class WorkerExecutionTests(PostgreSqlFixture postgres) : I
                 JsonSerializer.Deserialize<JsonElement>(attempt.Result!)));
             Assert.Null(attempt.ErrorCode);
         }
-        var observed = await client.GetFromJsonAsync<JsonElement>($"/api/client/jobs/{jobId}", Token);
-        Assert.Equal(new[] { "availableAtUtc", "createdAtUtc", "id", "maxAttempts", "priority", "status", "type" },
+        await AssertClientJobAsync(client, jobId, invalid ? "failed" : "succeeded");
+    }
+
+    private async Task<JsonElement> AssertClientJobAsync(HttpClient client, Guid jobId, string outcome)
+    {
+        using var response = await client.GetAsync($"/api/client/jobs/{jobId}", Token);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
+        var observed = await response.Content.ReadFromJsonAsync<JsonElement>(Token);
+        Assert.Equal(new[] { "availableAtUtc", "completedAtUtc", "completion", "createdAtUtc", "id", "maxAttempts", "priority", "status", "type" },
             observed.EnumerateObject().Select(property => property.Name).Order());
-        Assert.Equal(invalid ? "failed" : "succeeded", observed.GetProperty("status").GetString());
+        Assert.Equal(jobId, observed.GetProperty("id").GetGuid());
+        Assert.Equal(outcome == "abandoned" ? "failed" : outcome, observed.GetProperty("status").GetString());
+        var completion = observed.GetProperty("completion");
+        if (outcome is "pending" or "running")
+        {
+            Assert.Equal(JsonValueKind.Null, observed.GetProperty("completedAtUtc").ValueKind);
+            Assert.Equal(JsonValueKind.Null, completion.ValueKind);
+            return observed;
+        }
+
+        Assert.Equal(new[] { "attemptId", "attemptNumber", "error", "outcome", "result" },
+            completion.EnumerateObject().Select(property => property.Name).Order());
+        Assert.Equal(outcome, completion.GetProperty("outcome").GetString());
+        await using var context = Context();
+        var job = await context.Jobs.Include(job => job.Attempts).ThenInclude(attempt => attempt.Lease).SingleAsync(job => job.Id == jobId, Token);
+        var attempt = Assert.Single(job.Attempts);
+        Assert.Equal(attempt.Id, completion.GetProperty("attemptId").GetGuid());
+        Assert.Equal(attempt.Number, completion.GetProperty("attemptNumber").GetInt32());
+        Assert.EndsWith("Z", observed.GetProperty("completedAtUtc").GetString());
+        Assert.Equal(job.CompletedAtUtc, observed.GetProperty("completedAtUtc").GetDateTime());
+        Assert.Equal(job.CompletedAtUtc, attempt.FinishedAtUtc);
+        Assert.Equal(job.CompletedAtUtc, attempt.Lease!.ReleasedAtUtc);
+        if (outcome == "succeeded")
+        {
+            Assert.True(JsonElement.DeepEquals(JsonSerializer.Deserialize<JsonElement>("""{"count":4,"sum":3}"""), completion.GetProperty("result")));
+            Assert.Equal(JsonValueKind.Null, completion.GetProperty("error").ValueKind);
+        }
+        else
+        {
+            Assert.Equal(JsonValueKind.Null, completion.GetProperty("result").ValueKind);
+            var error = completion.GetProperty("error");
+            Assert.Equal(new[] { "code", "message" }, error.EnumerateObject().Select(property => property.Name).Order());
+            Assert.Equal(outcome == "abandoned" ? "execution_lease_expired" : "invalid_workload_input", error.GetProperty("code").GetString());
+            Assert.Equal(outcome == "abandoned" ? "Execution lease expired before completion was recorded." : "The bounded workload input is invalid.",
+                error.GetProperty("message").GetString());
+        }
+        return observed;
     }
 
     private async Task<Guid> SubmitAsync(HttpClient client, int duration, bool invalid = false)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/client/jobs")
+        using var request = Submission(duration, invalid, Guid.NewGuid().ToString());
+        using var response = await client.SendAsync(request, Token);
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        return (await response.Content.ReadFromJsonAsync<JsonElement>(Token)).GetProperty("id").GetGuid();
+    }
+    private static HttpRequestMessage Submission(int duration, bool invalid, string key)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, "/api/client/jobs")
         {
             Content = JsonContent.Create(new
             {
@@ -225,10 +283,8 @@ public sealed partial class WorkerExecutionTests(PostgreSqlFixture postgres) : I
                 payload = new { values = invalid ? Array.Empty<int>() : [1, 2, -1000000, 1000000], durationMs = duration }
             })
         };
-        request.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString());
-        using var response = await client.SendAsync(request, Token);
-        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
-        return (await response.Content.ReadFromJsonAsync<JsonElement>(Token)).GetProperty("id").GetGuid();
+        request.Headers.Add("Idempotency-Key", key);
+        return request;
     }
     private Task ExecutingAsync() => _clock.WaitForTimersAsync(Token,
         TimeSpan.FromSeconds(40) - _clock.GetElapsedTime(0), TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));

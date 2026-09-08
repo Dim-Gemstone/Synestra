@@ -26,6 +26,7 @@
     <File Path="docs/decisions/0013-lease-renewal-and-execution-reporting.md" />
     <File Path="docs/decisions/0014-lost-execution-finalization.md" />
     <File Path="docs/decisions/0015-minimal-worker-runtime-and-bounded-test-workload.md" />
+    <File Path="docs/decisions/0016-client-visible-terminal-outcome-and-result.md" />
     <File Path="docs/decisions/README.md" />
   </Folder>
   <Folder Name="/orchestration/">

@@ -80,10 +80,11 @@ public sealed class WorkerProcessTests
             await ExecuteAsync(database, "UPDATE job_definitions SET is_enabled = TRUE", token);
 
             var successfulJob = await SubmitAsync(client, 14000, false, token);
+            await WaitForJobAsync(client, successfulJob, "running", token);
             await EventuallyAsync(async () => await ScalarAsync<bool>(database,
                 "SELECT EXISTS (SELECT 1 FROM leases WHERE expires_at_utc > acquired_at_utc + interval '30 seconds')", token), token);
             Assert.True(await ScalarAsync<DateTime>(database, "SELECT last_seen_at_utc FROM workers", token) > firstHeartbeat);
-            await EventuallyAsync(async () => await JobStatusAsync(database, successfulJob, token) == "Succeeded", token);
+            var succeeded = await AssertCompletionAsync(client, database, successfulJob, "succeeded", token);
             using (var result = JsonDocument.Parse(await ScalarAsync<string>(database,
                        "SELECT result::text FROM job_attempts WHERE status = 'Succeeded'", token)))
             {
@@ -91,15 +92,8 @@ public sealed class WorkerProcessTests
                 Assert.Equal(3, result.RootElement.GetProperty("sum").GetInt64());
                 Assert.Equal(2, result.RootElement.EnumerateObject().Count());
             }
-            using (var observed = await client.GetFromJsonAsync<JsonDocument>($"/api/client/jobs/{successfulJob}", token))
-            {
-                Assert.NotNull(observed);
-                Assert.Equal(7, observed.RootElement.EnumerateObject().Count());
-                Assert.False(observed.RootElement.TryGetProperty("result", out _));
-            }
-
             var failedJob = await SubmitAsync(client, 0, true, token);
-            await EventuallyAsync(async () => await JobStatusAsync(database, failedJob, token) == "Failed", token);
+            var failedInput = await AssertCompletionAsync(client, database, failedJob, "failed", token);
             Assert.Equal("invalid_workload_input", await ScalarAsync<string>(database,
                 "SELECT error_code FROM job_attempts WHERE status = 'Failed'", token));
             Assert.Equal(2, await ScalarAsync<long>(database,
@@ -114,22 +108,23 @@ public sealed class WorkerProcessTests
             await StartAsync(commands, "synestra-worker", token);
             await EventuallyAsync(async () => await ScalarAsync<Guid>(database, "SELECT session_id FROM workers", token) != firstSession, token);
             Assert.Equal(workerId, await ScalarAsync<Guid>(database, "SELECT id FROM workers", token));
-            Assert.Equal("Succeeded", await JobStatusAsync(database, successfulJob, token));
+            Assert.True(JsonElement.DeepEquals(succeeded, await ReadJobAsync(client, successfulJob, token)));
+            Assert.True(JsonElement.DeepEquals(failedInput, await ReadJobAsync(client, failedJob, token)));
 
             var interruptedJob = await SubmitAsync(client, 60000, false, token);
-            await EventuallyAsync(async () => await JobStatusAsync(database, interruptedJob, token) == "Running", token);
+            await WaitForJobAsync(client, interruptedJob, "running", token);
             await StopAsync(app, commands, "synestra-worker", token);
-            Assert.Equal("Running", await JobStatusAsync(database, interruptedJob, token));
+            Assert.Equal("running", (await ReadJobAsync(client, interruptedJob, token)).GetProperty("status").GetString());
             // Only the harness advances persisted expiration after the actual process has exited.
             // Protocol timing/deadline behavior is covered separately using controlled time.
             await ExecuteAsync(database, "UPDATE leases SET expires_at_utc = acquired_at_utc + interval '1 millisecond' WHERE released_at_utc IS NULL", token);
-            await EventuallyAsync(async () => await JobStatusAsync(database, interruptedJob, token) == "Failed", token);
+            var interrupted = await AssertCompletionAsync(client, database, interruptedJob, "abandoned", token);
             Assert.Equal(1, await ScalarAsync<long>(database,
                 "SELECT count(*) FROM job_attempts WHERE status = 'Abandoned' AND error_code = 'execution_lease_expired' AND completion_report_id IS NULL AND result IS NULL", token));
 
             await StartAsync(commands, "synestra-worker", token);
             var crashedJob = await SubmitAsync(client, 60000, false, token);
-            await EventuallyAsync(async () => await JobStatusAsync(database, crashedJob, token) == "Running", token);
+            await WaitForJobAsync(client, crashedJob, "running", token);
             var crashedSession = await ScalarAsync<Guid>(database, "SELECT session_id FROM workers", token);
             var running = await app.ResourceNotifications.WaitForResourceAsync("synestra-worker",
                 resource => resource.Snapshot.State?.Text == KnownResourceStates.Running && resource.Snapshot.ExitCode is null, token);
@@ -142,17 +137,22 @@ public sealed class WorkerProcessTests
                 await process.WaitForExitAsync(token);
             }
             await app.ResourceNotifications.WaitForResourceAsync("synestra-worker", resource => resource.Snapshot.ExitCode.HasValue, token);
-            Assert.Equal("Running", await JobStatusAsync(database, crashedJob, token));
+            Assert.Equal("running", (await ReadJobAsync(client, crashedJob, token)).GetProperty("status").GetString());
             await StartAsync(commands, "synestra-worker", token);
             await EventuallyAsync(async () => await ScalarAsync<Guid>(database, "SELECT session_id FROM workers", token) != crashedSession, token);
-            Assert.Equal("Running", await JobStatusAsync(database, crashedJob, token));
+            Assert.Equal("running", (await ReadJobAsync(client, crashedJob, token)).GetProperty("status").GetString());
             Assert.Equal(1, await ScalarAsync<long>(database, "SELECT count(*) FROM job_attempts WHERE status = 'Running'", token));
             await ExecuteAsync(database, "UPDATE leases SET expires_at_utc = acquired_at_utc + interval '1 millisecond' WHERE released_at_utc IS NULL", token);
-            await EventuallyAsync(async () => await JobStatusAsync(database, crashedJob, token) == "Failed", token);
+            var crashed = await AssertCompletionAsync(client, database, crashedJob, "abandoned", token);
             var nextJob = await SubmitAsync(client, 0, false, token);
-            await EventuallyAsync(async () => await JobStatusAsync(database, nextJob, token) == "Succeeded", token);
+            await AssertCompletionAsync(client, database, nextJob, "succeeded", token);
             Assert.Equal(2, await ScalarAsync<long>(database, "SELECT count(*) FROM job_attempts WHERE status = 'Abandoned' AND completion_report_id IS NULL", token));
             await StopAsync(app, commands, "synestra-worker", token);
+            await StopAsync(app, commands, "synestra-api", token);
+            await StartAsync(commands, "synestra-api", token);
+            await app.ResourceNotifications.WaitForResourceHealthyAsync("synestra-api", token);
+            Assert.True(JsonElement.DeepEquals(interrupted, await ReadJobAsync(client, interruptedJob, token)));
+            Assert.True(JsonElement.DeepEquals(crashed, await ReadJobAsync(client, crashedJob, token)));
 
             // The real executable must fail startup without replacing a corrupt persisted identity.
             await File.WriteAllTextAsync(Path.Combine(directory, "worker-id"), "corrupt", token);
@@ -203,11 +203,71 @@ public sealed class WorkerProcessTests
         return body!.RootElement.GetProperty("id").GetGuid();
     }
 
-    private static async Task<string> JobStatusAsync(NpgsqlConnection database, Guid id, CancellationToken token)
+    private static async Task<JsonElement> ReadJobAsync(HttpClient client, Guid id, CancellationToken token)
     {
-        await using var command = new NpgsqlCommand("SELECT status FROM jobs WHERE id = @id", database);
+        using var response = await client.GetAsync($"/api/client/jobs/{id}", token);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
+        var view = await response.Content.ReadFromJsonAsync<JsonElement>(token);
+        Assert.Equal(new[] { "availableAtUtc", "completedAtUtc", "completion", "createdAtUtc", "id", "maxAttempts", "priority", "status", "type" },
+            view.EnumerateObject().Select(property => property.Name).Order());
+        Assert.Equal(id, view.GetProperty("id").GetGuid());
+        if (view.GetProperty("status").GetString() is "pending" or "running")
+        {
+            Assert.Equal(JsonValueKind.Null, view.GetProperty("completedAtUtc").ValueKind);
+            Assert.Equal(JsonValueKind.Null, view.GetProperty("completion").ValueKind);
+        }
+        return view;
+    }
+
+    private static async Task<JsonElement> WaitForJobAsync(HttpClient client, Guid id, string status, CancellationToken token)
+    {
+        JsonElement view = default;
+        await EventuallyAsync(async () =>
+        {
+            view = await ReadJobAsync(client, id, token);
+            return view.GetProperty("status").GetString() == status;
+        }, token);
+        return view;
+    }
+
+    private static async Task<JsonElement> AssertCompletionAsync(HttpClient client, NpgsqlConnection database, Guid id, string outcome, CancellationToken token)
+    {
+        var view = await WaitForJobAsync(client, id, outcome == "abandoned" ? "failed" : outcome, token);
+        var completion = view.GetProperty("completion");
+        Assert.Equal(new[] { "attemptId", "attemptNumber", "error", "outcome", "result" },
+            completion.EnumerateObject().Select(property => property.Name).Order());
+        Assert.Equal(outcome, completion.GetProperty("outcome").GetString());
+        Assert.EndsWith("Z", view.GetProperty("completedAtUtc").GetString());
+        if (outcome == "succeeded")
+        {
+            Assert.True(JsonElement.DeepEquals(JsonSerializer.Deserialize<JsonElement>("""{"count":4,"sum":3}"""), completion.GetProperty("result")));
+            Assert.Equal(JsonValueKind.Null, completion.GetProperty("error").ValueKind);
+        }
+        else
+        {
+            Assert.Equal(JsonValueKind.Null, completion.GetProperty("result").ValueKind);
+            var error = completion.GetProperty("error");
+            Assert.Equal(new[] { "code", "message" }, error.EnumerateObject().Select(property => property.Name).Order());
+            Assert.Equal(outcome == "abandoned" ? "execution_lease_expired" : "invalid_workload_input", error.GetProperty("code").GetString());
+            Assert.Equal(outcome == "abandoned" ? "Execution lease expired before completion was recorded." : "The bounded workload input is invalid.",
+                error.GetProperty("message").GetString());
+        }
+
+        await using var command = new NpgsqlCommand("""
+            SELECT a.id, a.number, j.completed_at_utc, a.finished_at_utc, l.released_at_utc
+            FROM jobs j JOIN job_attempts a ON a.job_id = j.id JOIN leases l ON l.job_attempt_id = a.id
+            WHERE j.id = @id
+            """, database);
         command.Parameters.AddWithValue("id", id);
-        return (string)(await command.ExecuteScalarAsync(token))!;
+        await using var reader = await command.ExecuteReaderAsync(token);
+        Assert.True(await reader.ReadAsync(token));
+        Assert.Equal(reader.GetGuid(0), completion.GetProperty("attemptId").GetGuid());
+        Assert.Equal(reader.GetInt32(1), completion.GetProperty("attemptNumber").GetInt32());
+        for (var column = 2; column <= 4; column++)
+            Assert.Equal(reader.GetDateTime(column), view.GetProperty("completedAtUtc").GetDateTime());
+        Assert.False(await reader.ReadAsync(token));
+        return view;
     }
 
     private static async Task<T> ScalarAsync<T>(NpgsqlConnection database, string sql, CancellationToken token)

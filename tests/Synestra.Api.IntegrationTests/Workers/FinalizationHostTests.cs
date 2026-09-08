@@ -16,7 +16,7 @@ namespace Synestra.Api.IntegrationTests.Workers;
 public sealed partial class ExecutionApiTests
 {
     [Fact]
-    public async Task HostFinalization_DefaultsRunImmediatelyAndPreserveClientShapeAndWorkerErrorPrecedence()
+    public async Task HostFinalization_DefaultsRunImmediatelyAndPreserveWorkerErrorPrecedence()
     {
         var execution = await AcquireAsync();
         var clock = new FinalizerTestTimeProvider(Now.AddSeconds(40));
@@ -31,7 +31,7 @@ public sealed partial class ExecutionApiTests
         Assert.Single(probe.DisposedScopes);
         await AssertHostLostAsync(execution, Now.AddSeconds(40));
         var view = await client.GetFromJsonAsync<JsonElement>($"/api/client/jobs/{execution.JobId}", Token);
-        AssertFields(view, "id", "type", "status", "priority", "maxAttempts", "createdAtUtc", "availableAtUtc");
+        AssertFields(view, "id", "type", "status", "priority", "maxAttempts", "createdAtUtc", "availableAtUtc", "completedAtUtc", "completion");
         Assert.Equal("failed", view.GetProperty("status").GetString());
         var body = Body(Guid.CreateVersion7());
         await ProblemAsync(await SendAsync(execution, "completion", body, client), 409, "attempt_already_finalized");
@@ -261,6 +261,7 @@ public sealed partial class ExecutionApiTests
         using var client = host.CreateClient();
         var body = Body(Guid.CreateVersion7());
         string snapshot;
+        JsonElement observed;
         try
         {
             await probe.Entered.Task.WaitAsync(TimeSpan.FromSeconds(10), Token);
@@ -268,10 +269,16 @@ public sealed partial class ExecutionApiTests
             var response = await SendAsync(execution, "completion", body);
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             snapshot = await response.Content.ReadAsStringAsync(Token);
+            observed = await client.GetFromJsonAsync<JsonElement>($"/api/client/jobs/{execution.JobId}", Token);
+            AssertClientCompletion(observed, execution, "succeeded");
+            Assert.Equal(Now.AddSeconds(35).UtcDateTime, observed.GetProperty("completedAtUtc").GetDateTime());
+            AssertJsonEqual(JsonSerializer.Deserialize<JsonElement>(snapshot).GetProperty("result").GetRawText(),
+                observed.GetProperty("completion").GetProperty("result"));
             var before = await HostExecutionRowsAsync();
             probe.Gate.TrySetResult();
             await clock.NextDelayAsync(Token);
             Assert.Equal(before, await HostExecutionRowsAsync());
+            Assert.True(JsonElement.DeepEquals(observed, await client.GetFromJsonAsync<JsonElement>($"/api/client/jobs/{execution.JobId}", Token)));
         }
         finally { probe.Gate.TrySetResult(); }
         await host.DisposeAsync();
@@ -282,6 +289,7 @@ public sealed partial class ExecutionApiTests
         var replay = await SendAsync(execution, "completion", body, restartedClient);
         Assert.Equal(HttpStatusCode.OK, replay.StatusCode);
         Assert.Equal(snapshot, await replay.Content.ReadAsStringAsync(Token));
+        Assert.True(JsonElement.DeepEquals(observed, await restartedClient.GetFromJsonAsync<JsonElement>($"/api/client/jobs/{execution.JobId}", Token)));
     }
 
     [Fact]

@@ -1,6 +1,8 @@
 # Roadmap
 
-Slices 1, 1A, 1B, 2A, 2B, 2C, and 2D are implemented. Slice 2 remains incomplete.
+Slices 1, 1A, 1B and 2 (2A through 2F) are implemented. ADR-0016 Client terminal
+reads and unit 2F.2 qualification complete the submit-to-result path, including
+failure, loss, replay and separate Worker/API processes. Slice 3 is next.
 ADR-0011 defines registration/liveness and ADR-0012 defines atomic claim and
 execution ownership; ADR-0013 defines token fencing, renewal and completion reports.
 ADR-0014 defines implemented automatic loss finalization through an atomic
@@ -104,7 +106,7 @@ Workload input/version/secret or artifact-reference extensions should receive a
 separate submission slice only when a concrete scenario needs them. Preserve
 ADR-0006 and explicitly evolve ADR-0007's strict request contract when necessary.
 
-## Slice 2 — Execute a submitted Job (incomplete)
+## Slice 2 — Execute a submitted Job (implemented)
 
 A registered Worker executes one supported Job and a client retrieves its outcome
 and a small workload-specific result. Automatic retries and pause are excluded.
@@ -118,8 +120,8 @@ Decisions required before implementation:
   the execution resource boundary remains open;
 - loss detection and finalization without automatic rerun are resolved by ADR-0014,
   preserving ADR-0013's lock order and first-committed terminal transition rule;
-- client-visible outcome/result contract; ADR-0013 resolves Worker result/error
-  limits, durable replay and late completion before finalization.
+- client-visible outcome/result is resolved by ADR-0016; ADR-0013 resolves Worker
+  result/error limits, durable replay and late completion before finalization.
 
 Tasks and completion criteria:
 
@@ -132,8 +134,9 @@ Tasks and completion criteria:
 - test state invariants, concurrent claims/capacity, expiration/finalization races,
   repeated reports, and the submit-to-result path against real PostgreSQL.
 
-The slice is incomplete until the execution path and its defined loss behavior
-work. It does not require a general Workflow engine or full CEF scenario runtime.
+The execution path and its defined loss behavior are qualified with the bounded
+synthetic workload. A general Workflow engine or full CEF scenario runtime is
+not required for this slice; a concrete useful workload remains future work.
 
 ### Slice 2A — Worker registration and liveness (implemented)
 
@@ -201,9 +204,8 @@ Slice 2D adds automatic loss finalization. Workloads still do not execute.
   API contract/restart/multi-instance tests cover the protocol.
 
 Late completion is accepted after expiration only while execution remains Running
-and unreleased with valid ownership. This is not lost-execution recovery. No Worker
-executable, actual workload execution or client-visible outcome/result expansion
-is implemented. The whole Slice 2 remains incomplete.
+and unreleased with valid ownership. This is not lost-execution recovery. Worker
+execution and Client-visible output are delivered separately in 2E and 2F.
 
 ### Slice 2D — Lost-execution finalization (implemented)
 
@@ -223,7 +225,7 @@ configuration supports explicit disablement. Controlled host tests verify startu
 shutdown, temporary failure, restart, concurrent instances and Worker API races.
 Eventual recording requires an enabled host, available database and locks that
 eventually release; it has no exact deadline during outage or contention.
-Slice 2 remains incomplete; the next increment is Slice 2E.
+Slice 2E supplies Worker execution; Slice 2F exposes and qualifies Client outcomes.
 
 ### Slice 2E — Minimal Worker and bounded test workload (implemented)
 
@@ -245,14 +247,25 @@ Local Aspire starts PostgreSQL, MigrationWorker, HTTP-ready API and then Worker.
 Definition preparation is an explicit development script outside Worker. Real
 process tests verify execution/renewal/completion, identity locking, graceful stop,
 crash/restart, fresh sessions, API restart and enabled-host finalization. Slice 2E
-is implemented. Slice 2 remains incomplete; the next increment is Slice 2F.
+is implemented. Slice 2F adds Client observations to this execution path.
 
-### Slice 2F — Client-visible terminal outcome and small result (proposed)
+### Slice 2F — Client-visible terminal outcome and small result (implemented)
 
-Explicitly evolve ADR-0009's read contract to expose terminal outcome and a small
-result. Verify submit-to-result and guaranteed lost-execution finalization before
-marking Slice 2 complete. This may be combined with 2E in a controlled end-to-end
-increment, but is not implemented by 2C.
+ADR-0016 evolves ADR-0009. Unit 2F.1 implements a separate GetJob read model and
+single-statement PostgreSQL projection. GET returns persisted completion time,
+latest associated terminal attempt, success result or failure/loss error, with
+explicit legacy fallbacks. Submission responses and durable replay stay unchanged.
+Application, PostgreSQL and API tests cover association, committed visibility,
+bounded result representation, legacy rows, restart and contract compatibility.
+
+Unit 2F.2 qualifies Client submit-to-result with actual Worker execution. Client
+reads distinguish Pending/Running, success, workload failure and finalized loss;
+committed output and timestamps survive completion response loss, replay and API
+restart. Original keyed POST snapshots remain unchanged after terminal completion.
+Controlled PostgreSQL races verify Client visibility before and after either
+terminal winner. Aspire process tests poll Client GET for execution and loss,
+verify result/error and attempt/time association, and preserve observations across
+API and Worker restarts. Slice 2 is complete for the bounded synthetic workload.
 
 ## Slice 3 — Observe and cancel a long-running scenario (proposed)
 
@@ -295,8 +308,8 @@ registration/liveness, atomic claim, renewal, idempotent execution reporting and
 automatic loss finalization with a bounded discovery sweep are implemented.
 The minimal Worker executes a bounded synthetic workload through HTTP with bounded
 transport recovery and verified local orchestration with separate processes.
-Client-visible terminal outcome/result and control remain absent. Continue with
-Slice 2F as described above. A minimally useful execution product still needs
-client-visible outcomes and a concrete workload. Long-running scenario control
-follows in Slice 3; automatic retries, pause, and Workflow are not prerequisites
-for the first execution slice.
+Client-visible terminal reads and the complete Client execution path are qualified
+in 2F. A minimally useful execution product still needs a concrete workload beyond
+the synthetic handler. Long-running scenario control follows in Slice 3;
+automatic retries, pause, and Workflow are not prerequisites for the first
+execution slice.

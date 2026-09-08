@@ -76,7 +76,9 @@ public sealed class SubmitJobApiTests(PostgreSqlFixture postgres) : IAsyncLifeti
         Assert.Equal(HttpStatusCode.OK, getResponse.StatusCode);
         Assert.Equal("application/json", getResponse.Content.Headers.ContentType?.MediaType);
         var getBody = await getResponse.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
-        Assert.Equal(7, getBody.EnumerateObject().Count());
+        Assert.Equal(9, getBody.EnumerateObject().Count());
+        Assert.Equal(JsonValueKind.Null, getBody.GetProperty("completedAtUtc").ValueKind);
+        Assert.Equal(JsonValueKind.Null, getBody.GetProperty("completion").ValueKind);
         Assert.Equal(id, getBody.GetProperty("id").GetGuid());
         Assert.Equal(definition.Type, getBody.GetProperty("type").GetString());
         Assert.Equal("pending", getBody.GetProperty("status").GetString());
@@ -219,6 +221,8 @@ public sealed class SubmitJobApiTests(PostgreSqlFixture postgres) : IAsyncLifeti
         Assert.Equal(firstText, await restartedReplay.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         var get = await _client.GetFromJsonAsync<JsonElement>(first.Headers.Location, TestContext.Current.CancellationToken);
         Assert.Equal("succeeded", get.GetProperty("status").GetString());
+        Assert.Equal(JsonValueKind.Null, get.GetProperty("completion").ValueKind);
+        Assert.Equal(JsonValueKind.Null, get.GetProperty("completedAtUtc").ValueKind);
         Assert.False(get.TryGetProperty("payload", out _));
         await AssertCountsAsync(1, 1);
     }

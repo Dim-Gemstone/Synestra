@@ -2,6 +2,10 @@
 
 **Status:** Accepted
 
+ADR-0016 extends this initial read representation with terminal completion and
+result fields. The original submission response and missing-Job contract remain
+unchanged; the exclusions below describe the initial Slice 1A scope.
+
 ## Context
 
 Slice 1 accepts and persists a Job, but a client cannot retrieve it after the

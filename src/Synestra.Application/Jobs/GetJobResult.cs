@@ -8,13 +8,24 @@ public enum GetJobOutcome
     NotFound
 }
 
-public sealed record GetJobResult(GetJobOutcome Outcome, JobDetails? Job = null);
+public sealed record GetJobResult(GetJobOutcome Outcome, GetJobDetails? Job = null);
 
-public sealed record JobDetails(
+public sealed record GetJobDetails(
     Guid Id,
     string Type,
     JobStatus Status,
     int Priority,
     int MaxAttempts,
     DateTime CreatedAtUtc,
-    DateTime AvailableAtUtc);
+    DateTime AvailableAtUtc,
+    DateTime? CompletedAtUtc,
+    JobCompletionDetails? Completion);
+
+public sealed record JobCompletionDetails(
+    Guid AttemptId,
+    int AttemptNumber,
+    JobAttemptStatus Outcome,
+    string? Result,
+    JobCompletionError? Error);
+
+public sealed record JobCompletionError(string Code, string Message);
