@@ -225,11 +225,27 @@ Eventual recording requires an enabled host, available database and locks that
 eventually release; it has no exact deadline during outage or contention.
 Slice 2 remains incomplete; the next increment is Slice 2E.
 
-### Slice 2E — Minimal Worker and bounded test workload (proposed)
+### Slice 2E — Minimal Worker and bounded test workload (implemented)
 
-Implement a minimal Worker agent and bounded handler that exercise registration,
-heartbeat, claim, renewal and reporting. Define execution isolation and resource
-cleanup within this increment. No Worker executable exists yet.
+ADR-0015 accepts a long-lived capacity-one agent, stable local identity, a bounded
+in-process test workload, lease maintenance, shutdown and transport failure rules.
+The executable persists WorkerId, creates a fresh process session, registers and
+heartbeats through HTTP. It claims one Job, executes `test.bounded-sum.v1`, renews
+confirmed ownership and reports success or bounded input failure. Controlled
+timers bound execution and shutdown; lease loss stops local work without a
+synthetic outcome. Worker and real API/PostgreSQL tests cover execution, result
+persistence, lease release, API restart and enabled-host finalization.
+
+Bounded recovery repeats only registration, renewal and frozen completion after
+recognized transport failures. It preserves identity/report data, caps attempts
+and elapsed time, and never repeats an ambiguous claim or adopts an old execution.
+Real API/PostgreSQL tests verify response loss after commit, completion replay
+across restart/expiry, session fencing and loss after an unacknowledged renewal.
+Local Aspire starts PostgreSQL, MigrationWorker, HTTP-ready API and then Worker.
+Definition preparation is an explicit development script outside Worker. Real
+process tests verify execution/renewal/completion, identity locking, graceful stop,
+crash/restart, fresh sessions, API restart and enabled-host finalization. Slice 2E
+is implemented. Slice 2 remains incomplete; the next increment is Slice 2F.
 
 ### Slice 2F — Client-visible terminal outcome and small result (proposed)
 
@@ -277,9 +293,10 @@ constraint or speculative retry/workflow tables.
 Currently submission, opt-in idempotent replay, retrieval by ID, Worker
 registration/liveness, atomic claim, renewal, idempotent execution reporting and
 automatic loss finalization with a bounded discovery sweep are implemented.
-Actual workload execution, client-visible terminal outcome/result and control
-remain absent. Continue with Slice 2E, followed by 2F as described above.
-A minimally useful execution product still needs Worker execution,
-client-visible outcomes, and a concrete workload. Long-running scenario control
+The minimal Worker executes a bounded synthetic workload through HTTP with bounded
+transport recovery and verified local orchestration with separate processes.
+Client-visible terminal outcome/result and control remain absent. Continue with
+Slice 2F as described above. A minimally useful execution product still needs
+client-visible outcomes and a concrete workload. Long-running scenario control
 follows in Slice 3; automatic retries, pause, and Workflow are not prerequisites
 for the first execution slice.

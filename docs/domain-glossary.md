@@ -10,7 +10,7 @@ decided.
 | `Job` | One logical unit of submitted work | One physical execution | References its definition by ID, snapshots its type and preserves attempt history; StartAttempt owns Pending -> Running, SucceedAttempt/FailAttempt coordinate Worker completion, and AbandonAttempt records loss as Failed under ADR-0014 | Cancellation and retry semantics |
 | `JobAttempt` | One execution try for a Job | The retry policy itself | Created Running during claim with max(history) + 1; completion stores success result or failure error; loss records Abandoned with an expiry error and a finish time matching Job completion | Future retry and cancellation transitions |
 | `Lease` | Time-bounded exclusive right for a Worker session to execute an attempt | A permanent lock or execution result; LeaseId is not a credential | Worker/session-bound, renewable before expiration, released atomically on completion or loss finalization; one unreleased/unexpired Lease consumes a slot | Any future standalone release protocol |
-| `Worker` | Registered worker agent with identity, liveness and finite capacity | An OS thread, HTTP request, browser instance or individual CEF subprocess | Stable UUID v7 identity and replaceable process session; exact supported types; positive capacity; only registration/heartbeat confirm liveness | Future authentication and execution process lifetime/isolation |
+| `Worker` | Registered worker agent with identity, liveness and finite capacity | An OS thread, HTTP request, browser instance or individual CEF subprocess | Stable UUID v7 identity and replaceable process session; exact supported types; positive capacity; only registration/heartbeat confirm liveness; ADR-0015 adds a long-lived capacity-one agent with bounded execution, lease maintenance and reporting | Future authentication and general execution process lifetime/isolation |
 
 ## Working execution terminology
 
@@ -29,6 +29,15 @@ of CEF subprocesses. Those subprocesses are workload implementation details,
 not individual Synestra Workers.
 
 See `job-lifecycle.md` for confirmed and undecided lifecycle behavior.
+
+ADR-0015's minimal executable persists WorkerId in an explicit local state
+directory and holds exclusive ownership of that directory until shutdown. Every
+launch creates a fresh SessionId. Units 2E.1 through 2E.3 register, heartbeat and
+execute the bounded handler through claim/renewal/reporting, with bounded repeats
+of registration, renewal and frozen completion after transport failures. Claim is
+not repeated after ambiguity, and agent restart cannot adopt old execution or
+recover in-memory reports. This limited isolation decision does not select a browser
+process model.
 
 ## Worker registration terminology
 
@@ -61,7 +70,7 @@ UTC. Count all sessions of a Worker, including legacy null-session leases. Exact
 expiration frees the slot without finalizing the Running attempt or creating a
 retry. Reducing capacity or replacing the session never deletes existing leases.
 New leases require UUID v7 session binding; nullable schema preserves legacy rows.
-Ownership and reporting are durable, but actual workload execution is unimplemented.
+Ownership and reporting are durable; ADR-0015 adds actual bounded test execution.
 
 ## Renewal and completion terminology
 
@@ -106,7 +115,8 @@ This is a server background process, not a Worker agent. Restart discards the
 traversal cursor and rediscovers persisted work; multiple hosts coordinate through
 the same row locks. Eventual recording requires an enabled host, available database
 and locks that eventually release. Disabled deployments provide no such promise.
-Slice 2D is implemented; Slice 2 still needs Worker execution and Client outcome/result.
+Slice 2D is implemented; Slice 2 still needs Worker orchestration/process
+qualification and Client outcome/result.
 
 ## Scenario execution terminology
 
