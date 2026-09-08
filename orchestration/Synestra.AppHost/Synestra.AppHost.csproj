@@ -5,7 +5,9 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <AspireUseCliBundle>true</AspireUseCliBundle>
+    <!-- This .NET-only graph uses versioned NuGet DCP/dashboard tools so CI needs no separately installed CLI bundle. -->
+    <AspireUseCliBundle>false</AspireUseCliBundle>
+    <NoWarn>$(NoWarn);ASPIRE010</NoWarn>
     <UserSecretsId>2cdbd893-616c-4988-881c-15879451aa14</UserSecretsId>
   </PropertyGroup>
 
@@ -16,6 +18,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Synestra.Api\Synestra.Api.csproj" />
     <ProjectReference Include="..\..\src\Synestra.MigrationWorker\Synestra.MigrationWorker.csproj" />
+    <ProjectReference Include="..\..\src\Synestra.Worker\Synestra.Worker.csproj" />
   </ItemGroup>
 
 </Project>

@@ -225,7 +225,7 @@ Eventual recording requires an enabled host, available database and locks that
 eventually release; it has no exact deadline during outage or contention.
 Slice 2 remains incomplete; the next increment is Slice 2E.
 
-### Slice 2E — Minimal Worker and bounded test workload (in progress)
+### Slice 2E — Minimal Worker and bounded test workload (implemented)
 
 ADR-0015 accepts a long-lived capacity-one agent, stable local identity, a bounded
 in-process test workload, lease maintenance, shutdown and transport failure rules.
@@ -241,8 +241,11 @@ recognized transport failures. It preserves identity/report data, caps attempts
 and elapsed time, and never repeats an ambiguous claim or adopts an old execution.
 Real API/PostgreSQL tests verify response loss after commit, completion replay
 across restart/expiry, session fencing and loss after an unacknowledged renewal.
-Local Aspire/process qualification remains to be implemented. Slice 2E and Slice 2
-remain incomplete; the next increment is local orchestration/process qualification.
+Local Aspire starts PostgreSQL, MigrationWorker, HTTP-ready API and then Worker.
+Definition preparation is an explicit development script outside Worker. Real
+process tests verify execution/renewal/completion, identity locking, graceful stop,
+crash/restart, fresh sessions, API restart and enabled-host finalization. Slice 2E
+is implemented. Slice 2 remains incomplete; the next increment is Slice 2F.
 
 ### Slice 2F — Client-visible terminal outcome and small result (proposed)
 
@@ -291,9 +294,9 @@ Currently submission, opt-in idempotent replay, retrieval by ID, Worker
 registration/liveness, atomic claim, renewal, idempotent execution reporting and
 automatic loss finalization with a bounded discovery sweep are implemented.
 The minimal Worker executes a bounded synthetic workload through HTTP with bounded
-transport recovery. Process qualification, client-visible terminal outcome/result and control
-remain absent. Complete Slice 2E, followed by 2F as described above.
-A minimally useful execution product still needs process qualification,
-client-visible outcomes, and a concrete workload. Long-running scenario control
+transport recovery and verified local orchestration with separate processes.
+Client-visible terminal outcome/result and control remain absent. Continue with
+Slice 2F as described above. A minimally useful execution product still needs
+client-visible outcomes and a concrete workload. Long-running scenario control
 follows in Slice 3; automatic retries, pause, and Workflow are not prerequisites
 for the first execution slice.

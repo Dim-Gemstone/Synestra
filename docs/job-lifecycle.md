@@ -148,12 +148,13 @@ ExecutionFinalization configuration (see `testing.md`). Eventual loss recording
 requires an enabled running host, available database and locks that eventually
 release; no exact deadline is promised during outages or contention. Disabled
 deployments do not promise eventual finalization. Slice 2D is implemented, while
-Slice 2 still lacks Worker orchestration/process qualification and
-client-visible outcome/result. ADR-0015 unit 2E.2 now executes one built-in bounded
-test workload through claim, renewal and completion. Local shutdown or lease loss
+Slice 2 still lacks client-visible outcome/result. ADR-0015 unit 2E.2 executes one
+built-in bounded test workload through claim, renewal and completion. Local shutdown or lease loss
 cancels its unfinished handler without inventing a domain outcome; the enabled
 finalizer remains responsible for recording unreported lost execution. Unit 2E.3
 adds bounded transport recovery for registration, renewal and frozen completion.
 It never reruns a handler or repeats an ambiguous claim. A possibly committed
 renewal provides no extra local execution budget until acknowledged; replaying a
-frozen report after expiry does not authorize renewed execution.
+frozen report after expiry does not authorize renewed execution. Unit 2E.4 verifies
+these process boundaries through local Aspire orchestration, including graceful
+stop, crash/restart and enabled-host loss finalization. It adds no lifecycle state.

@@ -18,6 +18,7 @@ builder.Services.AddOptions<ExecutionFinalizationOptions>()
     .ValidateOnStart();
 builder.Services.AddHostedService<ExpiredExecutionFinalizer>();
 builder.Services.AddControllers();
+builder.Services.AddHealthChecks();
 builder.Services.AddProblemDetails(options =>
 {
     options.CustomizeProblemDetails = context =>
@@ -46,6 +47,7 @@ app.UseHttpsRedirection();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapHealthChecks("/health");
 
 app.Run();
 

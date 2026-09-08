@@ -33,6 +33,7 @@
     <Project Path="orchestration/Synestra.ServiceDefaults/Synestra.ServiceDefaults.csproj" />
   </Folder>
   <Folder Name="/scripts/">
+    <File Path="scripts/prepare-bounded-workload.sql" />
     <File Path="scripts/verify-solution-items.ps1" />
   </Folder>
   <Folder Name="/Solution Items/">
@@ -50,6 +51,7 @@
     <Project Path="src/Synestra.Persistence/Synestra.Persistence.csproj" Id="1c38c2d2-7b55-4192-bdd4-b416b201d690" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Synestra.AppHost.Tests/Synestra.AppHost.Tests.csproj" />
     <Project Path="tests/Synestra.Api.IntegrationTests/Synestra.Api.IntegrationTests.csproj" />
     <Project Path="tests/Synestra.Application.Tests/Synestra.Application.Tests.csproj" />
     <Project Path="tests/Synestra.Worker.Tests/Synestra.Worker.Tests.csproj" />

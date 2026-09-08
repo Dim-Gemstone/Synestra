@@ -69,8 +69,10 @@ shutdown. The Worker uses HTTP only and has no control-plane project/database
 dependency. Tests verify result/error persistence, lease release, API restart and
 finalizer rejection without outcome overwrite. Bounded transport recovery preserves
 registration identity, confirmed lease budgets and frozen reports, including replay
-after committed response loss and API restart. Process qualification remains
-pending. Slices 2E and 2 remain incomplete.
+after committed response loss and API restart. Unit 2E.4 adds local Aspire startup
+ordering, explicit development definition preparation and real process tests for
+execution, renewal, completion, graceful stop, crash/restart, identity locking and
+loss finalization. Slice 2E is implemented; Slice 2 remains incomplete.
 
 ## Proposed
 
@@ -217,11 +219,11 @@ failure isolation and safe restart/reset. Unit 2D.3 runs that sweep automaticall
 in enabled API hosts, including after restart and across concurrent instances.
 Slice 2 remains incomplete.
 
-Slice 2E is in progress: ADR-0015 units 2E.1 through 2E.3 implement the minimal Worker
-through bounded workload execution, lease maintenance, persisted completion and
-bounded transport recovery/replay. Next is 2E.4 local orchestration/process qualification.
+Slice 2E is implemented: ADR-0015 units 2E.1 through 2E.4 provide the minimal Worker,
+bounded workload execution, lease maintenance, persisted completion, bounded
+transport recovery/replay, local Aspire orchestration and real process qualification.
 Slice 2F adds client-visible terminal outcome/result; its read expansion remains
-absent. A minimally useful execution product still needs those increments, a
+absent. A minimally useful execution product still needs that increment, a
 concrete workload and the verified client submit-to-result path with loss behavior.
 
 The current working interpretation is:

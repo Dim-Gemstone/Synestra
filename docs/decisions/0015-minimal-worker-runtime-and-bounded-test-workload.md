@@ -11,9 +11,10 @@ the API boundary and workload-agnostic control plane.
 
 This ADR accepts the contract for all of Slice 2E. Units 2E.1 through 2E.3 implement
 the executable, identity, registration, heartbeat, claim, bounded handler,
-renewal, completion, shutdown and bounded transport recovery/replay. Aspire
-wiring/process qualification (2E.4) remains unimplemented. Slices 2E and 2 remain
-incomplete.
+renewal, completion, shutdown and bounded transport recovery/replay. Unit 2E.4
+adds local Aspire wiring, explicit development definition preparation and real
+process qualification. Slice 2E is implemented; Slice 2 remains incomplete until
+the separate Slice 2F Client read expansion is implemented and verified.
 
 ## Decision
 
