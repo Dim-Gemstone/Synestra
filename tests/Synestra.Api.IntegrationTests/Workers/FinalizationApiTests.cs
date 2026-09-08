@@ -101,6 +101,11 @@ public sealed partial class ExecutionApiTests
         try
         {
             await gate.Entered.Task.WaitAsync(TimeSpan.FromSeconds(10), Token);
+            var running = await _client.GetFromJsonAsync<JsonElement>($"/api/client/jobs/{execution.JobId}", Token)
+                .WaitAsync(TimeSpan.FromSeconds(10), Token);
+            Assert.Equal("running", running.GetProperty("status").GetString());
+            Assert.Equal(JsonValueKind.Null, running.GetProperty("completedAtUtc").ValueKind);
+            Assert.Equal(JsonValueKind.Null, running.GetProperty("completion").ValueKind);
             if (finalizerFirst)
             {
                 var completion = SendAsync(execution, "completion", report);
@@ -119,6 +124,21 @@ public sealed partial class ExecutionApiTests
                 var replay = await SendAsync(execution, "completion", report);
                 Assert.Equal(HttpStatusCode.OK, replay.StatusCode);
                 Assert.Equal(await response.Content.ReadAsStringAsync(Token), await replay.Content.ReadAsStringAsync(Token));
+            }
+            var view = await _client.GetFromJsonAsync<JsonElement>($"/api/client/jobs/{execution.JobId}", Token);
+            AssertClientCompletion(view, execution, finalizerFirst ? "abandoned" : "succeeded");
+            Assert.Equal(Now.AddSeconds(40).UtcDateTime, view.GetProperty("completedAtUtc").GetDateTime());
+            var completionView = view.GetProperty("completion");
+            if (finalizerFirst)
+            {
+                Assert.Equal(JsonValueKind.Null, completionView.GetProperty("result").ValueKind);
+                AssertJsonEqual("""{"code":"execution_lease_expired","message":"Execution lease expired before completion was recorded."}""",
+                    completionView.GetProperty("error"));
+            }
+            else
+            {
+                AssertJsonEqual(JsonSerializer.Deserialize<JsonElement>(report).GetProperty("result").GetRawText(), completionView.GetProperty("result"));
+                Assert.Equal(JsonValueKind.Null, completionView.GetProperty("error").ValueKind);
             }
         }
         finally { gate.Release.TrySetResult(); }

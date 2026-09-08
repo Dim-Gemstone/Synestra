@@ -76,7 +76,15 @@ public sealed partial class WorkerExecutionTests
     {
         await using var first = Factory(_clock);
         using var firstClient = first.CreateClient();
-        await SubmitAsync(firstClient, 0, invalid);
+        var key = Guid.NewGuid().ToString();
+        using var submission = Submission(0, invalid, key);
+        using var accepted = await firstClient.SendAsync(submission, Token);
+        Assert.Equal(HttpStatusCode.Created, accepted.StatusCode);
+        var submissionSnapshot = await accepted.Content.ReadAsStringAsync(Token);
+        var original = JsonSerializer.Deserialize<JsonElement>(submissionSnapshot);
+        Assert.Equal(7, original.EnumerateObject().Count());
+        Assert.Equal("pending", original.GetProperty("status").GetString());
+        var jobId = original.GetProperty("id").GetGuid();
         using var firstTransport = new HttpMessageInvoker(first.Server.CreateHandler());
         using var routing = new Routing(firstTransport);
         var responses = new ConcurrentQueue<string>();
@@ -92,12 +100,16 @@ public sealed partial class WorkerExecutionTests
         await _clock.WaitForTimersAsync(Token, TimeSpan.FromSeconds(1));
         Assert.Equal(1, routing.Count("claims"));
         var committed = await ExecutionRowsAsync();
+        // The Client can already see a committed outcome while Worker still lacks its acknowledgement.
+        var observed = await AssertClientJobAsync(firstClient, jobId, invalid ? "failed" : "succeeded");
         await first.DisposeAsync();
         await using var restarted = Factory(_clock);
         using var restartedTransport = new HttpMessageInvoker(restarted.Server.CreateHandler());
         routing.Target = restartedTransport;
         // Server UTC is now past expiry; the frozen report's monotonic retry budget is unchanged.
         _clock.ShiftUtc(TimeSpan.FromMinutes(1));
+        using var client = restarted.CreateClient();
+        Assert.True(JsonElement.DeepEquals(observed, await AssertClientJobAsync(client, jobId, invalid ? "failed" : "succeeded")));
         _clock.Advance(TimeSpan.FromSeconds(1));
         await _clock.WaitForTimersAsync(Token, TimeSpan.FromSeconds(9), TimeSpan.FromSeconds(1));
         Assert.Equal(committed, await ExecutionRowsAsync());
@@ -108,6 +120,14 @@ public sealed partial class WorkerExecutionTests
         Assert.Equal(1, routing.Count("registration"));
         Assert.Equal(2, routing.Count("claims"));
         Assert.Equal(0, routing.Count("renewal"));
+        Assert.True(JsonElement.DeepEquals(observed, await AssertClientJobAsync(client, jobId, invalid ? "failed" : "succeeded")));
+        using var repeatedSubmission = Submission(0, invalid, key);
+        using var replay = await client.SendAsync(repeatedSubmission, Token);
+        Assert.Equal(HttpStatusCode.Created, replay.StatusCode);
+        Assert.Equal(accepted.Headers.Location, replay.Headers.Location);
+        Assert.Equal(submissionSnapshot, await replay.Content.ReadAsStringAsync(Token));
+        Assert.True(JsonElement.DeepEquals(observed, await AssertClientJobAsync(client, jobId, invalid ? "failed" : "succeeded")));
+        Assert.Equal(committed, await ExecutionRowsAsync());
         await using (var context = Context())
         {
             var attempt = await context.JobAttempts.SingleAsync(Token);
@@ -256,6 +276,9 @@ public sealed partial class WorkerExecutionTests
         await using var enabled = Factory(_clock, finalizerEnabled: true);
         using var client = enabled.CreateClient();
         await _clock.WaitForTimersAsync(Token, TimeSpan.FromSeconds(5));
+        Guid jobId;
+        await using (var before = Context()) jobId = (await before.Jobs.SingleAsync(Token)).Id;
+        await AssertClientJobAsync(client, jobId, "running");
         _clock.Advance(elapsed);
         await _clock.WaitForTimersAsync(Token, TimeSpan.FromSeconds(5));
         await using var context = Context();
@@ -265,6 +288,7 @@ public sealed partial class WorkerExecutionTests
         Assert.Null(context.Entry(attempt).Property<Guid?>("CompletionReportId").CurrentValue);
         Assert.Equal(JobStatus.Failed, (await context.Jobs.SingleAsync(Token)).Status);
         Assert.NotNull((await context.Leases.SingleAsync(Token)).ReleasedAtUtc);
+        await AssertClientJobAsync(client, jobId, "abandoned");
     }
     private async Task StopFailedAgentAsync(IHost agent)
     {

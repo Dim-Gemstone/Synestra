@@ -116,8 +116,9 @@ traversal cursor and rediscovers persisted work; multiple hosts coordinate throu
 the same row locks. Eventual recording requires an enabled host, available database
 and locks that eventually release. Disabled deployments provide no such promise.
 Slice 2D and Worker orchestration/process qualification in 2E are implemented.
-Client terminal reads are implemented in 2F.1; complete Client execution
-qualification remains 2F.2.
+Client terminal reads are implemented in 2F.1; 2F.2 qualifies Client execution,
+replay and loss observations, including separate processes. Slice 2 is complete
+for the bounded synthetic workload.
 
 ## Client terminal observation
 

@@ -53,7 +53,8 @@ one Worker slot, regardless of its session. Expiration exactly at server time fr
 capacity but leaves Job and JobAttempt Running. Session replacement likewise leaves
 existing ownership unchanged. ADR-0013 adds renewal, completion release and late
 reporting below. Claims never create retries or reclaim Running/Failed/lost Jobs;
-MaxAttempts is not an automatic retry engine. Slice 2 remains incomplete.
+MaxAttempts is not an automatic retry engine. Slice 2's bounded execution and
+Client outcome path are implemented and qualified through 2E/2F.
 
 ## Implemented renewal and completion (ADR-0013, Slice 2C)
 

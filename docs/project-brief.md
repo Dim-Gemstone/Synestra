@@ -30,8 +30,10 @@ operations. The worker-side handler owns those internal steps. See
 
 Progress and cooperative cancellation remain accepted requirements without
 implementation. Bounded execution and terminal result reporting are implemented;
-ADR-0016 adds Client terminal reads in 2F.1. Complete Client execution qualification
-remains 2F.2. Initial execution has no automatic retries. Pause is deferred;
+ADR-0016 adds Client terminal reads in 2F.1; 2F.2 qualifies Client submit-to-result,
+failure and loss through real Worker/API processes. Slice 2 is complete for the
+synthetic handler; a concrete useful workload remains to be implemented.
+Initial execution has no automatic retries. Pause is deferred;
 live-process pause is a candidate and durable resume remains open.
 
 ## Actors

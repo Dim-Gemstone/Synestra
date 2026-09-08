@@ -25,7 +25,7 @@ This document is not a replacement for ADRs. Important accepted decisions should
 | `JobDefinition → Job → JobAttempt → Lease → Worker` are the core domain concepts | Accepted / Implemented | These concepts already form the current domain model. |
 | A `Job` can have multiple `JobAttempt` instances | Accepted / Model implemented | Attempt history supports future retries; automatic retries are not implemented and are deferred by ADR-0008. Resume/attempt semantics remain open. |
 | A Job can execute a complete scenario | Accepted / Not implemented | Worker-side handlers own internal stages, loops, and browser/API operations. See ADR-0008. |
-| Execution exposes progress and results | Accepted / Terminal reporting and Client read implemented | ADR-0013 persists a bounded result/error; ADR-0016 exposes terminal completion through GET. Full Client execution qualification remains 2F.2; progress, partial results and artifacts remain unimplemented. |
+| Execution exposes progress and results | Accepted / Terminal reporting and Client read implemented | ADR-0013 persists a bounded result/error; ADR-0016 exposes terminal completion through GET. Unit 2F.2 qualifies Client observations with Worker execution, replay, loss and process restarts; progress, partial results and artifacts remain unimplemented. |
 | Running cancellation is cooperative | Accepted / Not implemented | Stop at a safe point and preserve available partial results; completed external effects are not undone. Exact transitions remain open. |
 | Initial execution has no automatic retries | Accepted | Lost execution must be recorded without automatic rerun. Preserve multiple attempts and history for a separately defined retry policy. See ADR-0008. |
 | A `Lease` represents temporary execution ownership | Accepted | A worker receives a time-bounded right to execute an attempt rather than permanent ownership of a job. |
@@ -72,7 +72,8 @@ registration identity, confirmed lease budgets and frozen reports, including rep
 after committed response loss and API restart. Unit 2E.4 adds local Aspire startup
 ordering, explicit development definition preparation and real process tests for
 execution, renewal, completion, graceful stop, crash/restart, identity locking and
-loss finalization. Slice 2E is implemented; Slice 2 remains incomplete.
+loss finalization. Slice 2E is implemented; Slice 2F completes Client observation
+and qualification of this execution path.
 
 ## Proposed
 
@@ -208,7 +209,7 @@ The exact Application-to-Persistence boundary remains subject to implementation 
 
 ## Current Product Interpretation
 
-Slices 1, 1A, 1B, 2A, 2B, 2C and 2D are implemented. Worker registration, liveness,
+Slices 1, 1A, 1B and 2 (2A through 2F) are implemented. Worker registration, liveness,
 claim, token-fenced renewal and idempotent execution reporting survive API restarts.
 Reported success/failure atomically finalizes Job/attempt, persists a small result
 or error, and releases Lease capacity. Late completion before finalization is
@@ -217,17 +218,19 @@ including legacy ownership, concurrency and rollback behavior. Unit 2D.2 adds a
 bounded internal sweep with read-only keyset discovery, independent transactions,
 failure isolation and safe restart/reset. Unit 2D.3 runs that sweep automatically
 in enabled API hosts, including after restart and across concurrent instances.
-Slice 2 remains incomplete.
 
 Slice 2E is implemented: ADR-0015 units 2E.1 through 2E.4 provide the minimal Worker,
 bounded workload execution, lease maintenance, persisted completion, bounded
 transport recovery/replay, local Aspire orchestration and real process qualification.
 Unit 2F.1 implements ADR-0016 Client terminal reads with a separate Application
 model, coherent PostgreSQL projection, bounded output and explicit legacy
-fallbacks. POST and durable submission replay remain unchanged. Slice 2F and
-Slice 2 remain incomplete until unit 2F.2 qualifies the Client submit-to-result
-path with real Worker/process execution, replay and loss behavior. A minimally
-useful product also needs a concrete workload beyond the bounded synthetic handler.
+fallbacks. POST and durable submission replay remain unchanged. Unit 2F.2 qualifies
+Client submit-to-result with real Worker execution, committed response loss/replay,
+both finalization race outcomes and separate-process success, failure, loss and
+restart observations. Slice 2 is complete for the bounded synthetic handler.
+Next is Slice 3: long-running observation and cooperative cancellation, with its
+protocol decisions still open. A minimally useful product needs a concrete workload
+beyond the bounded synthetic handler.
 
 The current working interpretation is:
 

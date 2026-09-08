@@ -7,8 +7,9 @@
 ADR-0013/0014 persist reported completion and abandoned execution; ADR-0015
 executes a bounded workload. ADR-0009's seven-field GET cannot expose that output.
 This decision defines Slice 2F. Unit 2F.1 implements the terminal read contract;
-unit 2F.2 separately qualifies the complete Client/Worker/process path before
-marking Slice 2 complete. Existing lifecycle and Worker protocols remain intact.
+unit 2F.2 qualifies the complete Client/Worker/process path. Both units are
+implemented and verified; Slice 2 is complete for the bounded synthetic workload.
+Existing lifecycle and Worker protocols remain intact.
 
 ## Decision
 
@@ -131,9 +132,12 @@ numeric/depth/Unicode boundaries, exact Client field sets, API restart and
 unchanged submission snapshots/replay. Existing seven-field GET assertions evolve;
 POST and Worker protocol assertions retain their contracts.
 
-Unit 2F.2 still needs Client submit-to-result qualification with real Worker
-execution, response-loss/replay and finalization races, plus separate-process
-Client observations. Slice 2 stays incomplete until that unit passes. Slice 3
-then addresses observing and cancelling a long-running scenario. Progress,
+Unit 2F.2 qualifies Client submit-to-result with real Worker execution, response
+loss after committed success/failure, replay across API restart and expiration,
+unchanged submission snapshots, and Client observations of both finalization race
+winners. Separate-process tests verify result/error, persisted attempt and time
+association, graceful-stop/crash loss, restart durability and subsequent work.
+Slice 2 is complete for the bounded synthetic workload. Slice 3 next addresses
+observing and cancelling a long-running scenario. Progress,
 partial results, artifacts, history/list endpoints, UI, retry, pause, browser
 runtime, definition management, auth, retention and deployment policy are excluded.

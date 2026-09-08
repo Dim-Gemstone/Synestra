@@ -197,11 +197,11 @@ Worker has no server project reference.
 | Layer | Verified behavior |
 | --- | --- |
 | Worker unit/host | Identity, configuration, safe diagnostics, exact HTTP contracts, input/resource bounds, deterministic output, 40-second virtual execution with independent heartbeat/renewal, no prefetch, delayed claim, monotonic cutoff, fencing, fatal ambiguous requests, finalization conflicts, active shutdown and frozen-report drain |
-| API + PostgreSQL, finalizer disabled | Registration/liveness and session replacement; real bounded success/failure, persisted report/result/error and released lease; API restart between requests preserves session/ownership; GET uses the ADR-0016 field set |
-| API + PostgreSQL, finalizer enabled | Stopped unfinished Worker execution is eventually abandoned; finalizer wins before renewal or a frozen completion and its terminal outcome is preserved |
+| API + PostgreSQL, finalizer disabled | Registration/liveness and session replacement; real bounded success/failure, persisted report/result/error and released lease; API restart between requests preserves session/ownership; Client GET observes Pending/Running and the exact terminal result/error with persisted attempt/time association |
+| API + PostgreSQL, finalizer enabled | Stopped unfinished Worker execution is eventually abandoned; Client GET exposes the fixed loss error; finalizer wins before renewal or a frozen completion and its Client observation remains unchanged |
 | Worker recovery tests | Fresh requests with identical bodies/headers, three-attempt/15-second cap including waits, UTC regression, caller cancellation, acknowledged renewal recovery, completion replay without prefetch/renewal, definitive conflicts, successful shutdown replay and fatal shutdown exhaustion |
-| API + PostgreSQL recovery tests | Registration response lost after commit preserves identity/history and cannot displace replacement; committed success/failure replay across API restart and lease expiry preserves exact response and execution rows; unacknowledged renewal does not extend the local budget; ambiguous claim stops and Worker restart cannot adopt it; enabled-host finalization records unreported loss |
-| Aspire + real executable processes + PostgreSQL | Migration/API readiness ordering, explicit definition preparation, actual heartbeat/renewal/completion, graceful shutdown, identity lock and corrupt startup, crash/restart without adoption, API restart, loss finalization and subsequent work |
+| API + PostgreSQL recovery tests | Registration response lost after commit preserves identity/history and cannot displace replacement; committed success/failure is Client-visible before Worker acknowledgement and stays unchanged across API restart, expiry and replay; original keyed POST snapshots remain exact; unacknowledged renewal does not extend the local budget; ambiguous claim stops and Worker restart cannot adopt it; enabled-host finalization exposes unreported loss to Client GET |
+| Aspire + real executable processes + PostgreSQL | Migration/API readiness ordering, explicit definition preparation, actual heartbeat/renewal/completion, graceful shutdown, identity lock and corrupt startup, crash/restart without adoption; Client GET polls success/failure/loss, correlates attempt/terminal time with storage, retains output across API restart and observes subsequent work |
 
 The existing persistence/API suites retain concurrency, rollback and protocol
 precedence coverage.
@@ -260,12 +260,18 @@ Use the API's HTTP URL shown in the dashboard to submit and observe a Job:
 ```powershell
 $apiOrigin = 'http://localhost:REPLACE_WITH_API_PORT'
 $job = Invoke-RestMethod -Method Post -Uri "$apiOrigin/api/client/jobs" -ContentType 'application/json' -Headers @{ 'Idempotency-Key' = [guid]::NewGuid().ToString() } -Body '{"type":"test.bounded-sum.v1","payload":{"values":[1,2,-3,4],"durationMs":14000}}'
-Invoke-RestMethod -Uri "$apiOrigin/api/client/jobs/$($job.id)"
+Invoke-RestMethod -Uri "$apiOrigin/api/client/jobs/$($job.id)" | ConvertTo-Json -Depth 6
 ```
 
 Repeat GET to observe terminal status and completion.result or completion.error.
 Pending/Running have null completion. The 14-second example exercises renewal
 with the current 30-second lease and independent 10-second heartbeat.
+After success, completion.outcome is `succeeded`, completion.result is
+`{"count":4,"sum":4}`, and completion.error is null. An empty `values` array is
+accepted as a Job but produces a terminal workload failure: HTTP GET still returns
+200, with status/outcome `failed`, null result and error code
+`invalid_workload_input`. Lost execution becomes status `failed` with outcome
+`abandoned` and error code `execution_lease_expired` only after server finalization.
 
 Run the separate-process qualification with:
 
@@ -283,12 +289,14 @@ Tests run in the normal solution/CI suite with no interactive dashboard required
 
 The process scenario verifies startup ordering, no automatic definition seed,
 deterministic success and input failure, actual heartbeat/renewal, persisted
-completion and lease release, the current Client GET field set, graceful idle/active
-shutdown, exclusive identity ownership across two processes, crash/restart with
+completion and lease release, Client terminal result/error and attempt/time
+association, graceful idle/active shutdown, exclusive identity ownership across
+two processes, crash/restart with
 no adoption of the old attempt, stable identity with a fresh session, persisted
 state across API restart, server finalization and fatal corrupt-identity startup.
-Bounded polling observes progress; one 14-second workload exercises real process
-timers. After stopping an unfinished process, the harness moves only its persisted
+Bounded Client GET polling observes execution state and terminal output; one
+14-second workload exercises real process timers. After stopping an unfinished
+process, the harness moves only its persisted
 lease expiration into the past to qualify the enabled finalizer without a long
 real-time expiry wait. Exact deadlines, shutdown report drain, response loss and
 conflict races remain in controlled-time Worker/API/PostgreSQL tests above.
@@ -319,10 +327,43 @@ dotnet test --project tests/Synestra.Api.IntegrationTests --filter-method '*Clie
 ```
 
 Existing completion/finalization API tests also check the new read representation.
-Unit 2F.2 remains responsible for qualifying the complete Client submit-to-result
-path with actual Worker execution, response loss/replay and finalization races,
-and extending separate-process qualification with Client result/loss observations.
-The field-set adaptations in existing process tests do not complete that unit.
+
+## Client submit-to-result qualification (2F.2)
+
+The existing Worker/API and process scenarios now verify the Client's observations,
+without duplicating their host setup or adding a second concurrency matrix:
+
+- `WorkerExecutionTests`: Client submission starts Pending; a 40-second virtual
+  execution stays Running with null completion during renewal; success/failure
+  exposes the exact bounded result or safe error and persisted attempt/time.
+  Stopping unfinished work leaves Running until the enabled finalizer records
+  Abandoned. A late frozen completion or renewal cannot overwrite the Client view.
+- `WorkerRecoveryTests`: after a committed completion response is lost, Client GET
+  already sees success/failure. Output, attempt identity and completion time stay
+  unchanged across API restart, expiration and Worker replay. Keyed POST replay
+  still returns the original seven-field Pending snapshot and Location, while
+  GET remains terminal. Unknown renewal/claim commits ultimately expose loss.
+- `FinalizationApiTests` and `FinalizationHostTests`: controlled transaction and
+  discovery gates qualify both terminal winners. GET can read committed Running
+  while a terminal writer holds locks, then observes only the winning completion.
+  A reported result remains unchanged after an enabled finalizer pass and restart.
+- `WorkerProcessTests`: real Worker/API processes and PostgreSQL qualify Client
+  result/error, loss after graceful stop and crash, identity/session restart without
+  adoption, durable success/failure/loss observations across API restart and
+  successful subsequent work. Database reads belong only to the harness and verify
+  storage invariants; Client GET determines when each Job reaches the expected state.
+
+Focused commands:
+
+```powershell
+dotnet test --project tests/Synestra.Api.IntegrationTests --filter-class '*WorkerExecutionTests'
+dotnet test --project tests/Synestra.Api.IntegrationTests --filter-method '*Finalization*'
+dotnet test --project tests/Synestra.AppHost.Tests
+```
+
+The required full solution run includes all of these scenarios. Slice 2 is
+qualified for `test.bounded-sum.v1`; this does not qualify arbitrary handlers,
+browser workloads, progress/cancellation or a production deployment policy.
 
 ## Dependency and license audit
 
