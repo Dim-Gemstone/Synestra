@@ -157,8 +157,8 @@ fractions, numeric underflow/rounding, extra fields and invalid bounds are rejec
 The handler awaits through TimeProvider and produces exactly `{"count":4,"sum":4}`
 for this example. Invalid payload produces a fixed `invalid_workload_input` failure.
 Execution uses bounded memory and a 65-second watchdog, with no external I/O.
-Result/error is persisted through the Worker API; the seven-field Client GET
-response still exposes only its existing status and metadata.
+Result/error is persisted through the Worker API. ADR-0016 Client GET now adds
+completedAtUtc and completion to its original seven fields (unit 2F.1).
 
 Renewal uses the received lease duration and a monotonic deadline anchored before
 claim with a five-second margin. Only acknowledged expiration increases extend
@@ -197,7 +197,7 @@ Worker has no server project reference.
 | Layer | Verified behavior |
 | --- | --- |
 | Worker unit/host | Identity, configuration, safe diagnostics, exact HTTP contracts, input/resource bounds, deterministic output, 40-second virtual execution with independent heartbeat/renewal, no prefetch, delayed claim, monotonic cutoff, fencing, fatal ambiguous requests, finalization conflicts, active shutdown and frozen-report drain |
-| API + PostgreSQL, finalizer disabled | Registration/liveness and session replacement; real bounded success/failure, persisted report/result/error and released lease; API restart between requests preserves session/ownership; Client GET retains seven fields |
+| API + PostgreSQL, finalizer disabled | Registration/liveness and session replacement; real bounded success/failure, persisted report/result/error and released lease; API restart between requests preserves session/ownership; GET uses the ADR-0016 field set |
 | API + PostgreSQL, finalizer enabled | Stopped unfinished Worker execution is eventually abandoned; finalizer wins before renewal or a frozen completion and its terminal outcome is preserved |
 | Worker recovery tests | Fresh requests with identical bodies/headers, three-attempt/15-second cap including waits, UTC regression, caller cancellation, acknowledged renewal recovery, completion replay without prefetch/renewal, definitive conflicts, successful shutdown replay and fatal shutdown exhaustion |
 | API + PostgreSQL recovery tests | Registration response lost after commit preserves identity/history and cannot displace replacement; committed success/failure replay across API restart and lease expiry preserves exact response and execution rows; unacknowledged renewal does not extend the local budget; ambiguous claim stops and Worker restart cannot adopt it; enabled-host finalization records unreported loss |
@@ -263,8 +263,8 @@ $job = Invoke-RestMethod -Method Post -Uri "$apiOrigin/api/client/jobs" -Content
 Invoke-RestMethod -Uri "$apiOrigin/api/client/jobs/$($job.id)"
 ```
 
-Repeat GET to observe terminal status. Result/error remains internal to storage;
-Client result retrieval is Slice 2F. The 14-second example exercises renewal
+Repeat GET to observe terminal status and completion.result or completion.error.
+Pending/Running have null completion. The 14-second example exercises renewal
 with the current 30-second lease and independent 10-second heartbeat.
 
 Run the separate-process qualification with:
@@ -283,7 +283,7 @@ Tests run in the normal solution/CI suite with no interactive dashboard required
 
 The process scenario verifies startup ordering, no automatic definition seed,
 deterministic success and input failure, actual heartbeat/renewal, persisted
-completion and lease release, unchanged Client GET shape, graceful idle/active
+completion and lease release, the current Client GET field set, graceful idle/active
 shutdown, exclusive identity ownership across two processes, crash/restart with
 no adoption of the old attempt, stable identity with a fresh session, persisted
 state across API restart, server finalization and fatal corrupt-identity startup.
@@ -292,6 +292,37 @@ timers. After stopping an unfinished process, the harness moves only its persist
 lease expiration into the past to qualify the enabled finalizer without a long
 real-time expiry wait. Exact deadlines, shutdown report drain, response loss and
 conflict races remain in controlled-time Worker/API/PostgreSQL tests above.
+
+## Client terminal reads (2F.1)
+
+GET now returns nine top-level fields: the original submission metadata plus
+completedAtUtc and completion. An associated terminal completion identifies its
+attempt and contains outcome, result and error, with explicit nulls. Loss is
+Job failed / completion abandoned, with execution_lease_expired. A failed Job
+is a successful HTTP read (200), not a transport error. Result is embedded JSON.
+
+Read tests cover real Worker reports and internal finalization, UTC, exact field
+sets, API restart, original POST replay and opaque JSON (64 KiB received result,
+depth 32, Unicode and jsonb numeric limits). PostgreSQL tests check greatest
+attempt number before association, legacy reportless/partial rows, UTF-8 legacy
+result bounds before transfer, one statement without tracking/row locks, and
+committed visibility while a terminal writer holds locks. Expired Running work
+is not finalized by GET. Legacy missing/oversized result is null, not fabricated
+or truncated output; bounded legacy nesting remains readable.
+
+Focused commands (the full solution suite is still required):
+
+```powershell
+dotnet test --project tests/Synestra.Application.Tests --filter-class '*GetJobTests'
+dotnet test --project tests/Synestra.Persistence.IntegrationTests --filter-method '*ClientRead*'
+dotnet test --project tests/Synestra.Api.IntegrationTests --filter-method '*ClientRead*'
+```
+
+Existing completion/finalization API tests also check the new read representation.
+Unit 2F.2 remains responsible for qualifying the complete Client submit-to-result
+path with actual Worker execution, response loss/replay and finalization races,
+and extending separate-process qualification with Client result/loss observations.
+The field-set adaptations in existing process tests do not complete that unit.
 
 ## Dependency and license audit
 

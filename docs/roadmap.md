@@ -1,6 +1,8 @@
 # Roadmap
 
-Slices 1, 1A, 1B, 2A, 2B, 2C, and 2D are implemented. Slice 2 remains incomplete.
+Slices 1, 1A, 1B, 2A, 2B, 2C, 2D and 2E are implemented. Unit 2F.1 adds
+Client terminal reads under ADR-0016. Slice 2 remains incomplete until 2F.2
+qualifies the Client submit-to-result path, including failure and loss.
 ADR-0011 defines registration/liveness and ADR-0012 defines atomic claim and
 execution ownership; ADR-0013 defines token fencing, renewal and completion reports.
 ADR-0014 defines implemented automatic loss finalization through an atomic
@@ -118,8 +120,8 @@ Decisions required before implementation:
   the execution resource boundary remains open;
 - loss detection and finalization without automatic rerun are resolved by ADR-0014,
   preserving ADR-0013's lock order and first-committed terminal transition rule;
-- client-visible outcome/result contract; ADR-0013 resolves Worker result/error
-  limits, durable replay and late completion before finalization.
+- client-visible outcome/result is resolved by ADR-0016; ADR-0013 resolves Worker
+  result/error limits, durable replay and late completion before finalization.
 
 Tasks and completion criteria:
 
@@ -247,12 +249,18 @@ process tests verify execution/renewal/completion, identity locking, graceful st
 crash/restart, fresh sessions, API restart and enabled-host finalization. Slice 2E
 is implemented. Slice 2 remains incomplete; the next increment is Slice 2F.
 
-### Slice 2F — Client-visible terminal outcome and small result (proposed)
+### Slice 2F — Client-visible terminal outcome and small result (in progress)
 
-Explicitly evolve ADR-0009's read contract to expose terminal outcome and a small
-result. Verify submit-to-result and guaranteed lost-execution finalization before
-marking Slice 2 complete. This may be combined with 2E in a controlled end-to-end
-increment, but is not implemented by 2C.
+ADR-0016 evolves ADR-0009. Unit 2F.1 implements a separate GetJob read model and
+single-statement PostgreSQL projection. GET returns persisted completion time,
+latest associated terminal attempt, success result or failure/loss error, with
+explicit legacy fallbacks. Submission responses and durable replay stay unchanged.
+Application, PostgreSQL and API tests cover association, committed visibility,
+bounded result representation, legacy rows, restart and contract compatibility.
+
+Unit 2F.2 remains: qualify Client submit-to-result with actual Worker execution,
+response-loss/replay and finalization races, including separate-process Client
+observations. Complete that qualification before marking Slice 2 complete.
 
 ## Slice 3 — Observe and cancel a long-running scenario (proposed)
 
@@ -295,8 +303,8 @@ registration/liveness, atomic claim, renewal, idempotent execution reporting and
 automatic loss finalization with a bounded discovery sweep are implemented.
 The minimal Worker executes a bounded synthetic workload through HTTP with bounded
 transport recovery and verified local orchestration with separate processes.
-Client-visible terminal outcome/result and control remain absent. Continue with
-Slice 2F as described above. A minimally useful execution product still needs
-client-visible outcomes and a concrete workload. Long-running scenario control
+Client-visible terminal reads are implemented in 2F.1; continue with 2F.2 to
+qualify the complete Client execution path. A minimally useful execution product
+still needs that qualification and a concrete workload. Long-running scenario control
 follows in Slice 3; automatic retries, pause, and Workflow are not prerequisites
 for the first execution slice.

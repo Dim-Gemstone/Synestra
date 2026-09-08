@@ -17,7 +17,7 @@ namespace Synestra.Api.IntegrationTests.Workers;
 public sealed partial class ExecutionApiTests
 {
     [Fact]
-    public async Task Finalization_WorkerTerminalErrorsAndPrecedenceSurviveRestartAndClientShapeIsUnchanged()
+    public async Task Finalization_WorkerTerminalErrorsAndPrecedenceSurviveRestart()
     {
         var execution = await AcquireAsync();
         var other = await AcquireAsync();
@@ -42,8 +42,13 @@ public sealed partial class ExecutionApiTests
         }
         await ProblemAsync(await SendAsync(execution, "completion", "{}"), 400, "invalid_request");
         var view = await _client.GetFromJsonAsync<JsonElement>($"/api/client/jobs/{execution.JobId}", Token);
-        AssertFields(view, "id", "type", "status", "priority", "maxAttempts", "createdAtUtc", "availableAtUtc");
-        Assert.Equal("failed", view.GetProperty("status").GetString());
+        AssertClientCompletion(view, execution, "abandoned");
+        Assert.Equal(Now.AddSeconds(40).UtcDateTime, view.GetProperty("completedAtUtc").GetDateTime());
+        var completion = view.GetProperty("completion");
+        Assert.Equal(JsonValueKind.Null, completion.GetProperty("result").ValueKind);
+        AssertFields(completion.GetProperty("error"), "code", "message");
+        Assert.Equal("execution_lease_expired", completion.GetProperty("error").GetProperty("code").GetString());
+        Assert.Equal("Execution lease expired before completion was recorded.", completion.GetProperty("error").GetProperty("message").GetString());
         Assert.Equal(submissionIdentity, await SubmissionRowsAsync());
         var replacement = Guid.CreateVersion7();
         await RegisterAsync(execution.WorkerId, replacement);

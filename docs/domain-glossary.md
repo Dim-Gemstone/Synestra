@@ -89,8 +89,8 @@ Completion atomically finalizes Job/attempt, persists a small success result or
 failure error, and releases Lease capacity. Result is an object up to 64 KiB in
 received UTF-8, depth 32, without duplicate names; workload-specific validation is
 absent. Late completion while Running/unreleased may be accepted after expiration,
-without renewing ownership. It is not lost-execution recovery. Client-visible
-outcome/result remains unimplemented.
+without renewing ownership. It is not lost-execution recovery. ADR-0016 now
+exposes persisted terminal completion and result/error through Client GET.
 
 ## Lost-execution terminology
 
@@ -115,8 +115,20 @@ This is a server background process, not a Worker agent. Restart discards the
 traversal cursor and rediscovers persisted work; multiple hosts coordinate through
 the same row locks. Eventual recording requires an enabled host, available database
 and locks that eventually release. Disabled deployments provide no such promise.
-Slice 2D is implemented; Slice 2 still needs Worker orchestration/process
-qualification and Client outcome/result.
+Slice 2D and Worker orchestration/process qualification in 2E are implemented.
+Client terminal reads are implemented in 2F.1; complete Client execution
+qualification remains 2F.2.
+
+## Client terminal observation
+
+ADR-0016 adds completedAtUtc and nullable completion to GET Job. Completion
+identifies the greatest-numbered attempt only when its terminal status and
+finish time match the Job. It distinguishes succeeded, failed and abandoned;
+abandoned remains a Failed Job. Result is an object and error contains code/message.
+Missing or inconsistent association yields null completion without repair or
+fallback to an older attempt. Legacy output may be null, including a result
+whose stored text exceeds the bounded legacy read contract. Expiration alone
+never produces an outcome. POST and its original replay snapshot remain separate.
 
 ## Scenario execution terminology
 
@@ -129,7 +141,7 @@ loops. These terms describe requirements, not additional implemented entities.
 | Stage | Description of the current part of execution | Does not automatically create a Job or workflow node |
 | Progress | Counters or other indication of advancement | Does not guarantee enough state for recovery |
 | Partial result | Useful work already produced | May exist even when execution is cancelled or fails |
-| Final result | Workload-specific output associated with successful execution | ADR-0013 persists a bounded object result through Worker API; business rules and client-visible result remain open |
+| Final result | Workload-specific output associated with successful execution | ADR-0013 persists a bounded object result; ADR-0016 exposes it to clients. Workload-specific business rules remain open |
 | Artifact reference | Reference to a large input or output file | Storage, access, and retention contracts remain open |
 | Checkpoint | State sufficient for workload-specific continuation | Deferred; distinct from progress and partial results |
 | Live-process pause | Candidate suspension while execution state remains alive | Deferred; does not promise restart recovery |

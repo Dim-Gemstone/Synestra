@@ -16,7 +16,7 @@ namespace Synestra.Api.IntegrationTests.Workers;
 public sealed partial class ExecutionApiTests
 {
     [Fact]
-    public async Task HostFinalization_DefaultsRunImmediatelyAndPreserveClientShapeAndWorkerErrorPrecedence()
+    public async Task HostFinalization_DefaultsRunImmediatelyAndPreserveWorkerErrorPrecedence()
     {
         var execution = await AcquireAsync();
         var clock = new FinalizerTestTimeProvider(Now.AddSeconds(40));
@@ -31,7 +31,7 @@ public sealed partial class ExecutionApiTests
         Assert.Single(probe.DisposedScopes);
         await AssertHostLostAsync(execution, Now.AddSeconds(40));
         var view = await client.GetFromJsonAsync<JsonElement>($"/api/client/jobs/{execution.JobId}", Token);
-        AssertFields(view, "id", "type", "status", "priority", "maxAttempts", "createdAtUtc", "availableAtUtc");
+        AssertFields(view, "id", "type", "status", "priority", "maxAttempts", "createdAtUtc", "availableAtUtc", "completedAtUtc", "completion");
         Assert.Equal("failed", view.GetProperty("status").GetString());
         var body = Body(Guid.CreateVersion7());
         await ProblemAsync(await SendAsync(execution, "completion", body, client), 409, "attempt_already_finalized");

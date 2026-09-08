@@ -40,7 +40,7 @@ public sealed partial class WorkerExecutionTests(PostgreSqlFixture postgres) : I
     [InlineData(0, false)]
     [InlineData(0, true)]
     [InlineData(40000, false)]
-    public async Task AgentExecutesThroughWorkerApiAndPersistsCompletionWithoutExpandingClientContract(int duration, bool invalid)
+    public async Task AgentExecutesThroughWorkerApiAndPersistsCompletion(int duration, bool invalid)
     {
         await using var api = Factory(_clock);
         using var client = api.CreateClient();
@@ -210,7 +210,7 @@ public sealed partial class WorkerExecutionTests(PostgreSqlFixture postgres) : I
             Assert.Null(attempt.ErrorCode);
         }
         var observed = await client.GetFromJsonAsync<JsonElement>($"/api/client/jobs/{jobId}", Token);
-        Assert.Equal(new[] { "availableAtUtc", "createdAtUtc", "id", "maxAttempts", "priority", "status", "type" },
+        Assert.Equal(new[] { "availableAtUtc", "completedAtUtc", "completion", "createdAtUtc", "id", "maxAttempts", "priority", "status", "type" },
             observed.EnumerateObject().Select(property => property.Name).Order());
         Assert.Equal(invalid ? "failed" : "succeeded", observed.GetProperty("status").GetString());
     }

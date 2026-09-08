@@ -17,9 +17,10 @@
 - Pause is outside the first execution slice. Live-process pause is a candidate;
   durable resume after process loss remains undecided.
 
-Workload execution and control remain accepted requirements without implementation.
-Claim, renewal and completion reporting are implemented below. See ADR-0008,
-ADR-0012, ADR-0013, ADR-0014 and `execution-scenarios.md`.
+Bounded workload execution is implemented under ADR-0015; general scenario control
+remains unimplemented. Claim, renewal and completion reporting are described below.
+ADR-0016 adds Client terminal reads without changing these transitions. See
+ADR-0008, ADR-0012, ADR-0013, ADR-0014 and `execution-scenarios.md`.
 
 ## Proposed
 
@@ -84,7 +85,8 @@ be accepted before release/finalization; it never renews the Lease or restores p
 capacity. This is network-delay tolerance, not lost-execution recovery. Slice 2D
 adds loss finalization below using Worker -> Job -> attempt -> Lease locks;
 the first committed terminal transition wins.
-Actual workload execution and client-visible outcome/result remain later increments.
+ADR-0015 subsequently adds bounded execution, and ADR-0016 adds Client terminal
+reads. Neither changes the completion transition defined here.
 
 ## Implemented one-execution loss transition (ADR-0014, unit 2D.1)
 

@@ -46,7 +46,7 @@ public sealed class GetJobPersistenceTests(PostgreSqlFixture postgres)
             .ExecuteAsync(job.Id, cancellationToken);
 
         Assert.Equal(GetJobOutcome.Succeeded, result.Outcome);
-        var details = Assert.IsType<JobDetails>(result.Job);
+        var details = Assert.IsType<GetJobDetails>(result.Job);
         Assert.Equal(job.Id, details.Id);
         Assert.Equal(definition.Type, details.Type);
         Assert.Equal(JobStatus.Pending, details.Status);

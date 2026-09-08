@@ -94,7 +94,7 @@ public sealed class WorkerProcessTests
             using (var observed = await client.GetFromJsonAsync<JsonDocument>($"/api/client/jobs/{successfulJob}", token))
             {
                 Assert.NotNull(observed);
-                Assert.Equal(7, observed.RootElement.EnumerateObject().Count());
+                Assert.Equal(9, observed.RootElement.EnumerateObject().Count());
                 Assert.False(observed.RootElement.TryGetProperty("result", out _));
             }
 

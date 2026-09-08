@@ -81,7 +81,12 @@ public sealed partial class ExecutionApiTests(PostgreSqlFixture postgres) : IAsy
         Assert.Equal(HttpStatusCode.OK, replay.StatusCode);
         Assert.Equal(text, await replay.Content.ReadAsStringAsync(Token));
         var clientView = await _client.GetFromJsonAsync<JsonElement>($"/api/client/jobs/{execution.JobId}", Token);
-        AssertFields(clientView, "id", "type", "status", "priority", "maxAttempts", "createdAtUtc", "availableAtUtc");
+        AssertClientCompletion(clientView, execution, outcome);
+        Assert.Equal(json.GetProperty("finishedAtUtc").GetDateTime(), clientView.GetProperty("completedAtUtc").GetDateTime());
+        var completion = clientView.GetProperty("completion");
+        var output = outcome == "succeeded" ? "result" : "error";
+        Assert.True(JsonElement.DeepEquals(json.GetProperty(output), completion.GetProperty(output)));
+        Assert.Equal(JsonValueKind.Null, completion.GetProperty(outcome == "succeeded" ? "error" : "result").ValueKind);
         await ProblemAsync(await SendAsync(execution, "renewal"), 409, "lease_not_active");
         await ProblemAsync(await SendAsync(execution, "completion", Body(Guid.CreateVersion7(), outcome)), 409, "attempt_already_finalized");
         await ProblemAsync(await SendAsync(execution, "completion", Body(reportId, outcome == "succeeded" ? "failed" : "succeeded")), 409, "completion_report_conflict");

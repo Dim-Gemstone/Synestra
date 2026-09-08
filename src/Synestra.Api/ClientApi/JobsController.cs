@@ -15,7 +15,7 @@ public sealed class JobsController(SubmitJob submitJob, GetJob getJob) : Control
         var result = await getJob.ExecuteAsync(id, cancellationToken);
         return result.Outcome switch
         {
-            GetJobOutcome.Succeeded => Ok(MapResponse(result.Job!)),
+            GetJobOutcome.Succeeded => new JsonResult(GetJobResponse.From(result.Job!), GetJobResponse.ResponseOptions),
             GetJobOutcome.NotFound => Problem(StatusCodes.Status404NotFound, "job_not_found"),
             _ => throw new InvalidOperationException($"Unknown get-job outcome: {result.Outcome}.")
         };
@@ -86,15 +86,6 @@ public sealed class JobsController(SubmitJob submitJob, GetJob getJob) : Control
         Response.Headers.Location = $"/api/client/jobs/{job.Id}";
         return StatusCode(StatusCodes.Status201Created, response);
     }
-
-    private static GetJobResponse MapResponse(JobDetails job) => new(
-        job.Id,
-        job.Type,
-        job.Status.ToString().ToLowerInvariant(),
-        job.Priority,
-        job.MaxAttempts,
-        job.CreatedAtUtc,
-        job.AvailableAtUtc);
 
     private ObjectResult Problem(int status, string code, string? detail = null)
     {
